@@ -1,0 +1,54 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'kz.ku.portal'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'kz.ku.portal'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+        // Сервер по умолчанию (экран «Подключение»)
+        buildConfigField 'String', 'DEFAULT_SERVER', '"https://ku-portal.onrender.com"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Подпись релиза: если в CI заданы секреты keystore — подписываем им,
+    // иначе релиз подписывается отладочным ключом (APK всё равно устанавливается вручную).
+    def ksPath = System.getenv('KU_KEYSTORE_PATH')
+    def hasKs = ksPath != null && new File(ksPath).exists()
+    signingConfigs {
+        release {
+            if (hasKs) {
+                storeFile file(ksPath)
+                storePassword System.getenv('KU_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KU_KEY_ALIAS')
+                keyPassword System.getenv('KU_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig = hasKs ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

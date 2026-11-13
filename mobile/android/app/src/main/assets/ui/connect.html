@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self'; script-src 'self'">
+  <title>KU Portal — подключение</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <img class="logo" src="icon.png" alt="">
+      <h1>KU Portal</h1>
+      <p class="muted">Kozybayev University: расписание, оценки, AI-помощник, онлайн-экзамен</p>
+    </div>
+
+    <div id="error" class="note bad hide"></div>
+
+    <div class="card">
+      <h2>Где открыть портал</h2>
+      <div class="seg col" id="kinds">
+        <label class="opt" data-v="site"><input type="radio" name="kind" value="site">
+          <b>Сайт портала</b><span id="siteHint">Аккаунты и данные — как на сайте. Нужен интернет.</span></label>
+        <label class="opt" data-v="pc"><input type="radio" name="kind" value="pc">
+          <b>Компьютер с KU Portal Desktop</b><span>По Wi-Fi, без интернета. В программе на ПК: Справка → «Подключить телефон».</span></label>
+        <label class="opt" data-v="custom"><input type="radio" name="kind" value="custom">
+          <b>Другой адрес</b><span>Свой сервер портала.</span></label>
+      </div>
+
+      <div id="pcBox" class="hide">
+        <label class="f" for="pcAddr">Адрес компьютера</label>
+        <input class="inp" id="pcAddr" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="192.168.1.10:3000">
+        <div class="hint">Телефон и компьютер должны быть в одной сети Wi-Fi, а в настройках программы включён «Доступ с телефона».</div>
+      </div>
+      <div id="customBox" class="hide">
+        <label class="f" for="customAddr">Адрес сервера</label>
+        <input class="inp" id="customAddr" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://ku-portal.onrender.com">
+      </div>
+
+      <button class="btn block" id="go">Подключиться</button>
+      <div id="status" class="note hide"></div>
+    </div>
+
+    <div class="card hide" id="currentCard">
+      <h2>Текущий сервер</h2>
+      <div class="addr" id="current"></div>
+      <div class="row actions-left">
+        <button class="btn ghost" id="back">Вернуться в портал</button>
+      </div>
+    </div>
+    <p class="muted" id="ver"></p>
+  </div>
+  <script src="connect.js"></script>
+</body>
+</html>

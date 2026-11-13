@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Обычный http разрешён, потому что KU Portal Desktop в домашней сети доступен по http://192.168.x.x:3000.
+     Сайт портала (Render) открывается по https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

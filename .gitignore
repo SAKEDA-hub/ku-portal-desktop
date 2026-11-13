@@ -1,0 +1,15 @@
+node_modules/
+desktop/dist/
+app/data/db.json
+app/data/exam-sync.json
+app/data/ku_context.json
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/out/
+*.jks
+*.keystore
+*.log
+.DS_Store
+.idea/

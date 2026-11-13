@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self'; script-src 'self'">
+  <title>Настройки KU Portal</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div class="wrap">
+    <h1>Настройки приложения</h1>
+    <p class="muted">Оформление, язык, уведомления, безопасность портала — в самом портале: «Кабинет». Здесь — то, что относится к программе на компьютере.</p>
+
+    <div class="card">
+      <h2>Откуда брать портал</h2>
+      <div class="seg" id="modeSeg">
+        <label class="opt" data-v="local"><input type="radio" name="mode" value="local">
+          <b>Встроенный сервер</b><span>Работает на этом ПК, без интернета. Свои аккаунты и данные. Можно подключить телефон.</span></label>
+        <label class="opt" data-v="remote"><input type="radio" name="mode" value="remote">
+          <b>Сайт</b><span>Тот же портал и аккаунты, что в браузере. Нужен интернет.</span></label>
+      </div>
+      <div id="remoteBox">
+        <label class="f" for="remoteUrl">Адрес сайта</label>
+        <input class="inp" id="remoteUrl" type="url" spellcheck="false" placeholder="https://ku-portal.onrender.com">
+      </div>
+      <div id="localBox">
+        <label class="f" for="port">Порт встроенного сервера</label>
+        <input class="inp" id="port" type="number" min="1024" max="65535" step="1">
+        <div class="hint">Если порт занят, будет взят следующий свободный. Смена порта сбрасывает вход в портале (данные остаются).</div>
+        <label class="switch"><input type="checkbox" id="demo">
+          <div><b>Тестовые аккаунты</b><div class="hint">teacher@demo.kz, student@demo.kz, student2@demo.kz — пароль 1234.</div></div></label>
+        <div id="status" class="note info hide"></div>
+      </div>
+    </div>
+
+    <div class="card" id="phoneCard">
+      <h2>Телефон</h2>
+      <label class="switch"><input type="checkbox" id="lan">
+        <div><b>Доступ с телефона по Wi-Fi</b>
+          <div class="hint">Мобильное приложение KU Portal подключится к этому ПК и получит тот же портал: AI-помощник, оценки, расписание, онлайн-экзамен. Портал станет доступен всем устройствам в вашей сети — включайте только в доверенной (домашней) сети.</div></div></label>
+      <div id="lanList" class="hide">
+        <p>Адрес для мобильного приложения:</p>
+        <div id="lanAddrs"></div>
+        <div class="hint">Телефон и компьютер должны быть в одной сети Wi-Fi. Если Windows спросит про брандмауэр — разрешите доступ в частных сетях.</div>
+      </div>
+    </div>
+
+    <div class="card" id="aiCard">
+      <h2>AI-помощник (LM Studio)</h2>
+      <p>Ответы составляет модель Gemma, запущенная в <a href="https://lmstudio.ai" target="_blank" rel="noopener">LM Studio</a>, по локальной базе материалов университета (1 565 фрагментов). В LM Studio: загрузите модель → Developer → Start Server.</p>
+      <label class="f" for="lmUrl">Адрес LM Studio</label>
+      <input class="inp" id="lmUrl" type="url" spellcheck="false" placeholder="http://localhost:1234">
+      <div class="hint">LM Studio на этом ПК — <code>http://localhost:1234</code>. На другом ПК в сети — <code>http://192.168.x.x:1234</code> (в LM Studio включите «Serve on Local Network»), через Tailscale — <code>http://100.x.x.x:1234</code>, через туннель — <code>https://…</code>.</div>
+      <label class="f" for="lmModel">Модель</label>
+      <input class="inp" id="lmModel" type="text" spellcheck="false" placeholder="google/gemma-4-e4b">
+      <div class="hint">Если точного совпадения нет, берётся похожая загруженная модель.</div>
+      <label class="f" for="lmKey">Ключ API (если в LM Studio включён «Require API key»)</label>
+      <input class="inp" id="lmKey" type="password" autocomplete="off" spellcheck="false">
+      <div class="hint" id="encHint"></div>
+      <div class="row actions-left">
+        <button class="btn ghost" id="testAI">Проверить подключение</button>
+      </div>
+      <div id="aiResult" class="note hide"></div>
+    </div>
+    <div class="card hide" id="aiRemoteCard">
+      <h2>AI-помощник</h2>
+      <p>В режиме «Сайт» модель подключает сервер сайта. Состояние помощника на сайте:</p>
+      <button class="btn ghost" id="testRemoteAI">Проверить</button>
+      <div id="aiRemoteResult" class="note hide"></div>
+    </div>
+
+    <div class="card">
+      <h2>Данные</h2>
+      <p>Аккаунты, оценки, расписание, сеансы и данные онлайн-экзамена встроенного сервера хранятся в папке пользователя и не удаляются при обновлении программы.</p>
+      <div class="addr" id="dataDir"></div>
+      <div class="row actions-left">
+        <button class="btn ghost" id="openData">Открыть папку</button>
+        <button class="btn ghost" id="openLog">Журнал сервера</button>
+      </div>
+    </div>
+    <p class="muted" id="ver"></p>
+  </div>
+
+  <div class="bar">
+    <span class="grow muted" id="saveMsg"></span>
+    <button class="btn ghost" id="reset">По умолчанию</button>
+    <button class="btn" id="save">Сохранить</button>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>

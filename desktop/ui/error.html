@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self'; script-src 'self'">
+  <title>KU Portal — нет соединения</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div class="center">
+    <div class="narrow">
+      <img class="logo" src="icon.png" alt="">
+      <h1 id="title">Не удалось открыть портал</h1>
+      <p id="hint"></p>
+      <pre class="details" id="details"></pre>
+      <div class="row actions">
+        <button class="btn" id="retry">Повторить</button>
+        <button class="btn ghost" id="settings">Настройки приложения</button>
+      </div>
+    </div>
+  </div>
+  <script src="error.js"></script>
+</body>
+</html>

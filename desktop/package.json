@@ -1,0 +1,35 @@
+{
+  "name": "ku-portal-desktop",
+  "productName": "KU Portal",
+  "version": "1.0.0",
+  "description": "KU Portal — настольное приложение Kozybayev University (портал, AI-помощник, онлайн-экзамен)",
+  "author": "SAKEDA-hub",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "kz.ku.portal.desktop",
+    "productName": "KU Portal",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "config.js", "preload.js", "settings-preload.js", "ui/**/*"],
+    "extraResources": [
+      { "from": "../app", "to": "app", "filter": ["**/*", "!data/db.json", "!data/exam-sync.json", "!node_modules/**"] }
+    ],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "shortcutName": "KU Portal", "artifactName": "KU-Portal-Setup-${version}.${ext}" },
+    "portable": { "artifactName": "KU-Portal-Portable-${version}.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.education", "icon": "build/icon.png", "artifactName": "KU-Portal-${version}-${arch}.${ext}" },
+    "linux": { "target": ["AppImage"], "category": "Education", "icon": "build/icon.png", "maintainer": "SAKEDA-hub", "artifactName": "KU-Portal-${version}-${arch}.${ext}" }
+  }
+}
