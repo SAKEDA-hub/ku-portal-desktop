@@ -38,7 +38,6 @@ function fill(c) {
   $('remoteUrl').value = c.remoteUrl;
   $('port').value = c.port;
   $('demo').checked = c.demo;
-  $('lan').checked = c.lan;
   $('lmUrl').value = c.lmUrl;
   $('lmModel').value = c.lmModel;
   $('lmKey').value = c.lmKey;
@@ -50,7 +49,6 @@ function read() {
     remoteUrl: $('remoteUrl').value.trim(),
     port: Number($('port').value),
     demo: $('demo').checked,
-    lan: $('lan').checked,
     lmUrl: $('lmUrl').value.trim(),
     lmModel: $('lmModel').value.trim(),
     lmKey: $('lmKey').value.trim(),
@@ -71,11 +69,8 @@ function renderInfo() {
   }
   const box = $('lanAddrs');
   box.textContent = '';
-  if (cfg.lan && cfg.mode === 'local') {
-    $('lanList').classList.remove('hide');
-    if (!info.lanActive) {
-      box.textContent = 'Адрес появится после перезапуска приложения.';
-    } else if (info.lan.length) {
+  if (cfg.mode === 'local' && info.running && info.running.port) {
+    if (info.lan.length) {
       info.lan.forEach((a) => {
         const d = document.createElement('div');
         d.innerHTML = '<span class="addr"></span> <small></small>';
@@ -87,7 +82,7 @@ function renderInfo() {
       box.textContent = 'Компьютер не подключён к сети (Wi-Fi / LAN).';
     }
   } else {
-    $('lanList').classList.add('hide');
+    box.textContent = 'Адрес появится после перезапуска со встроенным сервером.';
   }
 }
 

@@ -12,12 +12,9 @@ const zlib = require('zlib');
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const PUB = path.join(ROOT, 'public');
-/* KU Portal Desktop: изменяемые данные (db.json, exam-sync.json, сеансы) — в KU_DATA_DIR
-   (папка пользователя), т.к. каталог установленной программы может быть только для чтения.
-   Корпус AI (только чтение) по-прежнему лежит рядом с сервером. */
-const DATA = process.env.KU_DATA_DIR || path.join(ROOT, 'data');
+const DATA = path.join(ROOT, 'data');
 const DB_FILE = path.join(DATA, 'db.json');
-const CORPUS_FILE = path.join(ROOT, 'data', 'ku-corpus.json.gz');
+const CORPUS_FILE = path.join(DATA, 'ku-corpus.json.gz');
 
 if (!fs.existsSync(DATA)) fs.mkdirSync(DATA, { recursive: true });
 
@@ -801,6 +798,4 @@ const server = http.createServer(async (req, res) => {
 loadDB();
 seedDemo();
 loadSessions();
-/* KU Portal Desktop: HOST — 127.0.0.1 (только этот ПК) или 0.0.0.0 (доступ с телефона по Wi-Fi) */
-server.listen(PORT, process.env.HOST || undefined, () => console.log(`KU Portal: http://localhost:${server.address().port}`));
-module.exports = server;
+server.listen(PORT, () => console.log(`KU Portal: http://localhost:${PORT}`));

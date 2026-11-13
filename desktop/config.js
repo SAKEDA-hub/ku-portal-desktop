@@ -7,10 +7,9 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULTS = Object.freeze({
-  mode: 'local',                         // 'local' — встроенный сервер; 'remote' — сайт по адресу remoteUrl
+  mode: 'remote',                        // 'remote' — сайт портала (те же аккаунты и данные); 'local' — встроенный сервер
   remoteUrl: 'https://ku-portal.onrender.com',
   port: 3000,                            // порт встроенного сервера (если занят — берётся следующий свободный)
-  lan: false,                            // true — открыть доступ к встроенному серверу с телефона по Wi-Fi
   demo: true,                            // тестовые аккаунты (teacher@demo.kz / student@demo.kz, пароль 1234)
   lmUrl: 'http://localhost:1234',        // LM Studio (Gemma) — AI-помощник
   lmModel: 'google/gemma-4-e4b',
@@ -34,10 +33,9 @@ function normUrl(v, fallback) {
 function sanitize(input, base = DEFAULTS) {
   const c = { ...base, ...(input || {}) };
   return {
-    mode: c.mode === 'remote' ? 'remote' : 'local',
+    mode: c.mode === 'local' ? 'local' : 'remote',
     remoteUrl: normUrl(c.remoteUrl, DEFAULTS.remoteUrl),
     port: clampPort(c.port),
-    lan: !!c.lan,
     demo: c.demo !== false,
     lmUrl: normUrl(c.lmUrl, DEFAULTS.lmUrl),
     lmModel: String(c.lmModel || DEFAULTS.lmModel).trim().slice(0, 200) || DEFAULTS.lmModel,
@@ -81,7 +79,7 @@ function createConfigStore(dir, safeStorage) {
 
 /* Меняется ли что-то, что требует перезапуска встроенного сервера */
 function needsRestart(a, b) {
-  return ['mode', 'port', 'lan', 'demo', 'lmUrl', 'lmModel', 'lmKey'].some((k) => a[k] !== b[k]);
+  return ['mode', 'port', 'demo', 'lmUrl', 'lmModel', 'lmKey'].some((k) => a[k] !== b[k]);
 }
 
 module.exports = { DEFAULTS, sanitize, createConfigStore, needsRestart };

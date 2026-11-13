@@ -14,10 +14,10 @@
     <div class="card">
       <h2>Откуда брать портал</h2>
       <div class="seg" id="modeSeg">
-        <label class="opt" data-v="local"><input type="radio" name="mode" value="local">
-          <b>Встроенный сервер</b><span>Работает на этом ПК, без интернета. Свои аккаунты и данные. Можно подключить телефон.</span></label>
         <label class="opt" data-v="remote"><input type="radio" name="mode" value="remote">
-          <b>Сайт</b><span>Тот же портал и аккаунты, что в браузере. Нужен интернет.</span></label>
+          <b>Сайт портала</b><span>Как в браузере: те же аккаунты, оценки, онлайн-экзамен. Связан с сайтом и приложением на телефоне. Нужен интернет.</span></label>
+        <label class="opt" data-v="local"><input type="radio" name="mode" value="local">
+          <b>Встроенный сервер</b><span>Тот же портал на этом ПК, без интернета. Свои аккаунты и данные. AI — через LM Studio.</span></label>
       </div>
       <div id="remoteBox">
         <label class="f" for="remoteUrl">Адрес сайта</label>
@@ -35,14 +35,9 @@
 
     <div class="card" id="phoneCard">
       <h2>Телефон</h2>
-      <label class="switch"><input type="checkbox" id="lan">
-        <div><b>Доступ с телефона по Wi-Fi</b>
-          <div class="hint">Мобильное приложение KU Portal подключится к этому ПК и получит тот же портал: AI-помощник, оценки, расписание, онлайн-экзамен. Портал станет доступен всем устройствам в вашей сети — включайте только в доверенной (домашней) сети.</div></div></label>
-      <div id="lanList" class="hide">
-        <p>Адрес для мобильного приложения:</p>
-        <div id="lanAddrs"></div>
-        <div class="hint">Телефон и компьютер должны быть в одной сети Wi-Fi. Если Windows спросит про брандмауэр — разрешите доступ в частных сетях.</div>
-      </div>
+      <p>Встроенный сервер доступен в вашей сети Wi-Fi (как при запуске сайта командой <code>node server.js</code>). В приложении KU Portal на телефоне выберите «Компьютер с KU Portal Desktop» и введите адрес:</p>
+      <div id="lanAddrs"></div>
+      <div class="hint">Телефон и компьютер должны быть в одной сети Wi-Fi. Если Windows спросит про брандмауэр — разрешите доступ в частных сетях.</div>
     </div>
 
     <div class="card" id="aiCard">
@@ -71,7 +66,7 @@
 
     <div class="card">
       <h2>Данные</h2>
-      <p>Аккаунты, оценки, расписание, сеансы и данные онлайн-экзамена встроенного сервера хранятся в папке пользователя и не удаляются при обновлении программы.</p>
+      <p>Данные встроенного сервера (аккаунты, оценки, расписание, сеансы, онлайн-экзамен) хранятся в папке пользователя и не удаляются при обновлении программы.</p>
       <div class="addr" id="dataDir"></div>
       <div class="row actions-left">
         <button class="btn ghost" id="openData">Открыть папку</button>

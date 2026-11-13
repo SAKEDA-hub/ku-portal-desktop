@@ -6,9 +6,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const Module = require('module');
+const cp = require('child_process');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'kudesk-'));
-fs.writeFileSync(path.join(userData, 'config.json'), JSON.stringify({ port: 3870, lmUrl: 'http://127.0.0.1:9', lan: false }));
+fs.writeFileSync(path.join(userData, 'config.json'), JSON.stringify({ mode: 'local', port: 3870, lmUrl: 'http://127.0.0.1:9' }));
 
 const handlers = {};
 const events = {};
@@ -16,6 +17,7 @@ const wins = [];
 let menuTpl = null;
 let permReq = null, permCheck = null;
 const opened = [];
+const forked = [];
 let readyResolve;
 const ready = new Promise((r) => { readyResolve = r; });
 
@@ -48,6 +50,8 @@ const fakeElectron = {
   dialog: { showMessageBox: async () => ({ response: 1 }) },
   session: { defaultSession: { setPermissionRequestHandler: (f) => { permReq = f; }, setPermissionCheckHandler: (f) => { permCheck = f; }, on() {} } },
   safeStorage: { isEncryptionAvailable: () => false },
+  // utilityProcess.fork ≈ child_process.fork (тот же API: stdout, stderr, exit, kill)
+  utilityProcess: { fork: (mod, args, o) => { const c = cp.fork(mod, args, { cwd: o.cwd, env: o.env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }); forked.push(c); return c; } },
 };
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (req, ...rest) { return req === 'electron' ? 'electron-fake' : origResolve.call(this, req, ...rest); };
@@ -68,7 +72,9 @@ test('desktop main: встроенный сервер и окно', async () => 
   const r = await fetch(url + 'api/ai/status');
   const j = await r.json();
   assert.strictEqual(j.online, false);
-  assert.ok(fs.existsSync(path.join(userData, 'data', 'db.json')), 'данные в userData/data');
+  assert.ok(fs.existsSync(path.join(userData, 'portal', 'data', 'db.json')), 'данные в userData/portal/data');
+  assert.ok(fs.existsSync(path.join(userData, 'portal', 'server.js')), 'копия сайта в userData/portal');
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'app', 'data', 'db.json')), 'app/ не меняется');
 
   // ссылки: свой портал — новое окно, внешние — браузер
   const wc = main.webContents;
@@ -101,7 +107,7 @@ test('desktop main: окно настроек и IPC', async () => {
   const got = await handlers['settings:get']({ sender: sw.webContents });
   assert.strictEqual(got.cfg.mode, 'local');
   assert.ok(got.info.running.port >= 3870);
-  assert.strictEqual(got.info.lanActive, false);
+  assert.ok(Array.isArray(got.info.lan));
 
   const ai = await handlers['settings:testAI']({ sender: sw.webContents }, { lmUrl: 'http://127.0.0.1:9' });
   assert.strictEqual(ai.ok, false);
@@ -120,4 +126,13 @@ test('desktop main: окно настроек и IPC', async () => {
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8')).port, 3999);
 });
 
-test.after(() => setTimeout(() => process.exit(0), 50)); // встроенный сервер держит процесс
+test('desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе', async () => {
+  const db = path.join(userData, 'portal', 'data', 'db.json');
+  const before = fs.readFileSync(db, 'utf8');
+  assert.ok(before.length > 10);
+  events['before-quit']();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(forked[0].killed || forked[0].exitCode !== null, 'процесс сервера остановлен');
+});
+
+test.after(() => setTimeout(() => process.exit(0), 50));

@@ -14,12 +14,12 @@ const fakeSafe = {
 
 test('sanitize: значения по умолчанию и мусор', () => {
   assert.deepStrictEqual(sanitize({}), { ...DEFAULTS });
-  const c = sanitize({ mode: 'evil', port: 80, remoteUrl: 'javascript:alert(1)', lmUrl: 'ftp://x', lan: 1, demo: false });
-  assert.strictEqual(c.mode, 'local');
+  const c = sanitize({ mode: 'evil', port: 80, remoteUrl: 'javascript:alert(1)', lmUrl: 'ftp://x', demo: false });
+  assert.strictEqual(c.mode, 'remote', 'по умолчанию — сайт');
+  assert.strictEqual(sanitize({ mode: 'local' }).mode, 'local');
   assert.strictEqual(c.port, 3000);
   assert.strictEqual(c.remoteUrl, DEFAULTS.remoteUrl);
   assert.strictEqual(c.lmUrl, DEFAULTS.lmUrl);
-  assert.strictEqual(c.lan, true);
   assert.strictEqual(c.demo, false);
   assert.strictEqual(sanitize({ remoteUrl: 'https://a.example.org/' }).remoteUrl, 'https://a.example.org');
 });
@@ -48,6 +48,6 @@ test('store: без хранилища ключей и с битым файло�
 test('needsRestart', () => {
   const a = sanitize({});
   assert.strictEqual(needsRestart(a, { ...a, remoteUrl: 'https://x.org' }), false);
-  assert.strictEqual(needsRestart(a, { ...a, lan: true }), true);
+  assert.strictEqual(needsRestart(a, { ...a, mode: 'local' }), true);
   assert.strictEqual(needsRestart(a, { ...a, lmUrl: 'http://192.168.1.2:1234' }), true);
 });

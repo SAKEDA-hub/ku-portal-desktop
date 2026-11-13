@@ -1,44 +1,50 @@
 # KU Portal Desktop
 
-Приложения портала Kozybayev University: **отдельно для компьютера** (Windows / macOS / Linux) и **для телефона** (Android). Работает всё, что есть на сайте [ku-portal](https://github.com/SAKEDA-hub/ku-portal): вход и регистрация, оценки, расписание, рейтинг, AI-помощник (Gemma), переход в онлайн-экзамен, все настройки кабинета (тема, язык, уведомления, безопасность, 2FA, сеансы, экспорт данных).
+Приложения портала Kozybayev University — **для компьютера** и **для телефона**. Они открывают тот же сайт [ku-portal.onrender.com](https://ku-portal.onrender.com): те же аккаунты, оценки, расписание, рейтинг, AI-помощник, онлайн-экзамен и настройки кабинета. Сайт, программа на ПК и приложение на телефоне связаны общими данными: что сделано в одном месте — видно в другом.
 
-| | Компьютер | Телефон |
-|---|---|---|
-| Папка | `desktop/` (Electron) | `mobile/android/` (Android, WebView) |
-| Портал | **встроенный сервер** — тот же `server.js`, работает без интернета; или режим «Сайт» | сайт портала **или** компьютер с KU Portal Desktop по Wi-Fi |
-| AI-помощник | LM Studio на этом ПК (`http://localhost:1234`) или в сети, настраивается в программе | через сервер, к которому подключён телефон (сайт или ПК) |
-| Файл | `KU-Portal-Setup-*.exe`, `KU-Portal-Portable-*.exe`, `.dmg`, `.AppImage` | `KU-Portal.apk` |
+## ⬇️ Скачать
 
-## Где взять готовые программы
+### 💻 Для компьютера
 
-Сборка идёт автоматически в GitHub Actions после каждого push в `main`:
-**Actions → Build → последний запуск → Artifacts** (`KU-Portal-desktop-Windows`, `-macOS`, `-Linux`, `KU-Portal-android`).
+| Система | Файл |
+|---|---|
+| **Windows** (установщик) | [KU-Portal-Setup.exe](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-Setup.exe) |
+| Windows (без установки) | [KU-Portal-Portable.exe](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-Portable.exe) |
+| **macOS** Apple Silicon (M1–M4) | [KU-Portal-mac-arm64.dmg](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-mac-arm64.dmg) |
+| macOS Intel | [KU-Portal-mac-x64.dmg](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-mac-x64.dmg) |
+| **Linux** | [KU-Portal-linux.AppImage](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-linux.AppImage) |
 
-Для версии с релизом поставьте тег — установщики появятся в **Releases**:
+### 📱 Для телефона
 
-```bash
-git tag v1.0.1 && git push origin v1.0.1
-```
+| Система | Файл |
+|---|---|
+| **Android** 7.0+ | [KU-Portal.apk](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal.apk) |
+| iPhone | отдельного приложения нет — откройте [сайт](https://ku-portal.onrender.com) в Safari → «Поделиться» → «На экран Домой» |
 
-Установка:
-- **Windows** — `KU-Portal-Setup-*.exe` (или Portable без установки). Программа не подписана сертификатом: SmartScreen → «Подробнее» → «Выполнить в любом случае».
-- **macOS** — `.dmg`; при первом запуске: правый клик по приложению → «Открыть» (нет подписи Apple).
-- **Linux** — `chmod +x KU-Portal-*.AppImage && ./KU-Portal-*.AppImage`.
-- **Android** — скачать `KU-Portal.apk` на телефон, открыть, разрешить установку из этого источника. Android 7.0+.
-- **iPhone** — отдельного приложения нет (нужен Mac и аккаунт Apple Developer); сайт портала открывается в Safari → «Поделиться» → «На экран Домой».
+Все версии: [Releases](https://github.com/SAKEDA-hub/ku-portal-desktop/releases). Файлы собираются и публикуются автоматически после каждого обновления репозитория (GitHub Actions).
+
+> Репозиторий приватный — ссылки открываются только у тех, у кого есть доступ к нему. Чтобы скачивать мог любой, сделайте репозиторий публичным (Settings → General → Danger Zone → Change visibility).
+
+**Установка**
+- **Windows** — запустить `KU-Portal-Setup.exe`. Программа без платного сертификата, поэтому SmartScreen предупредит: «Подробнее» → «Выполнить в любом случае».
+- **macOS** — открыть `.dmg`, перетащить KU Portal в «Программы». При первом запуске: правый клик → «Открыть» → «Открыть».
+- **Linux** — `chmod +x KU-Portal-linux.AppImage && ./KU-Portal-linux.AppImage`.
+- **Android** — скачать `KU-Portal.apk` на телефон, открыть, разрешить установку из этого источника. При первом запуске выбрать «Сайт портала» → «Подключиться».
+
+## Как это работает
+
+- **По умолчанию — сайт.** Окно программы и приложение на телефоне показывают [ku-portal.onrender.com](https://ku-portal.onrender.com) — всё работает так же, как в браузере, включая переход в онлайн-экзамен (`/exam-sync/`) и обратно кнопкой «KU Portal». Бесплатный хостинг после простоя просыпается до минуты — в это время показывается экран ожидания.
+- **Код сайта не изменён.** Папка `app/` — точная копия [ku-portal](https://github.com/SAKEDA-hub/ku-portal) (проверяется тестом).
+- **Встроенный сервер (по желанию, только ПК).** В настройках программы можно включить запуск портала прямо на компьютере (без интернета, с AI через LM Studio на этом ПК). У встроенного сервера свои аккаунты и данные — с сайтом они не связаны; телефон может подключиться к нему по Wi-Fi.
 
 ## Компьютер (desktop/)
 
-При запуске внутри программы стартует сервер портала (`app/server.js`) и открывается окно с порталом.
+Окно с порталом, меню на русском: «Назад/Вперёд», «Обновить», масштаб, «Открыть портал в браузере». Ссылки на сторонние сайты открываются в браузере, скачанные файлы (экспорт данных, CSV ведомости) — через обычный диалог сохранения, уведомления портала и онлайн-экзамена — системные.
 
-- **Данные** (аккаунты, оценки, расписание, сеансы, онлайн-экзамен) — в папке пользователя, не удаляются при обновлении: Windows `%APPDATA%\KU Portal\data`, macOS `~/Library/Application Support/KU Portal/data`, Linux `~/.config/KU Portal/data`. Меню **Файл → Открыть папку с данными**.
-- Тестовые аккаунты: `teacher@demo.kz`, `student@demo.kz`, `student2@demo.kz`, пароль `1234` (можно выключить в настройках). Онлайн-экзамен: `user` / `1`, `teacher` / `admin`.
-- **Файл → Настройки приложения** (`Ctrl+,`):
-  - откуда брать портал — встроенный сервер или сайт (`https://ku-portal.onrender.com` или свой адрес);
-  - порт (по умолчанию 3000; если занят — следующий свободный);
-  - **Доступ с телефона по Wi-Fi** — сервер становится доступен в локальной сети, адрес показывается там же и в **Справка → Подключить телефон**;
-  - **AI-помощник**: адрес LM Studio, модель, ключ API (шифруется средствами ОС), кнопка «Проверить подключение».
-- Журнал сервера: **Файл → Открыть журнал сервера**.
+**Файл → Настройки приложения** (`Ctrl+,`):
+- **откуда брать портал** — «Сайт портала» (по умолчанию, адрес можно сменить) или «Встроенный сервер»;
+- для встроенного сервера: порт (3000, если занят — следующий), тестовые аккаунты (`teacher@demo.kz`, `student@demo.kz`, `student2@demo.kz` / `1234`; онлайн-экзамен `user` / `1`, `teacher` / `admin`), адрес для телефона, **AI-помощник** — адрес LM Studio, модель, ключ (шифруется средствами ОС), «Проверить подключение»;
+- данные встроенного сервера — в папке пользователя (`…/KU Portal/portal/data`), не удаляются при обновлении программы: **Файл → Открыть папку с данными**; журнал — **Файл → Открыть журнал сервера**.
 
 ### AI-помощник
 
@@ -61,7 +67,7 @@ npm run dist         # установщик для текущей ОС → deskt
 
 При первом запуске — экран «Где открыть портал»:
 - **Сайт портала** — `https://ku-portal.onrender.com`, те же аккаунты, что в браузере;
-- **Компьютер с KU Portal Desktop** — адрес вида `192.168.1.10:3000` (на ПК включить «Доступ с телефона»); AI-помощник тогда работает через LM Studio на ПК;
+- **Компьютер с KU Portal Desktop** — адрес вида `192.168.1.10:3000`, если на ПК включён встроенный сервер (адрес — в его настройках); AI-помощник тогда работает через LM Studio на ПК;
 - **Другой адрес** — свой сервер.
 
 Перед подключением приложение проверяет адрес и показывает, работает ли AI-помощник. Сменить сервер: «Назад» на главной → «Сменить сервер».
@@ -90,8 +96,8 @@ base64 -w0 ku.jks   # → ANDROID_KEYSTORE_BASE64
 
 ## Устройство репозитория
 
-- `app/` — исходники сайта из [ku-portal](https://github.com/SAKEDA-hub/ku-portal) (`server.js`, `public/`, `exam-sync/`, база AI `data/ku-corpus.json.gz`). Изменения против сайта — три строки в `server.js`: папка данных `KU_DATA_DIR`, адрес `HOST`, `module.exports = server`. Обновить из сайта: `./scripts/sync-app.sh ../ku-portal`.
+- `app/` — исходники сайта из [ku-portal](https://github.com/SAKEDA-hub/ku-portal) (`server.js`, `public/`, `exam-sync/`, база AI `data/ku-corpus.json.gz`). Код не изменён ни на строку; программа копирует его в папку пользователя и запускает как `node server.js`. Обновить из сайта: `./scripts/sync-app.sh ../ku-portal`.
 - `desktop/` — Electron: `main.js` (встроенный сервер, окна, меню, безопасность), `config.js` (настройки), `ui/` (настройки, экраны ожидания и ошибки).
 - `mobile/android/` — Android-приложение: `MainActivity.java`, `WebBridge.java`, `assets/` (экран подключения, мост `bridge.js`).
 - `tests/` — `node --test tests/*.test.js`: настройки, встроенный сервер, главный процесс десктопа (на заглушке Electron).
-- `.github/workflows/build.yml` — проверки, сборка Windows/macOS/Linux и APK, релиз по тегу.
+- `.github/workflows/build.yml` — проверки, сборка Windows/macOS/Linux и APK, публикация в Releases после каждого push в `main`; журналы сборки — ветки `ci/*`.

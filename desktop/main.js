@@ -1,16 +1,15 @@
 /*
  * KU Portal Desktop — главный процесс Electron.
  *
- * Режим «Встроенный сервер» (по умолчанию): внутри приложения запускается тот же server.js,
- * что и на сайте (папка app/), поэтому работает всё: вход/регистрация, оценки, расписание,
- * рейтинг, AI-помощник (Gemma в LM Studio), онлайн-экзамен (/exam-sync/), все настройки.
- * Данные хранятся в папке пользователя (<userData>/data), а не в каталоге программы.
- * При включённом «Доступ с телефона» сервер слушает 0.0.0.0 — мобильное приложение
- * подключается к ПК по Wi-Fi и получает тот же портал, включая AI.
+ * Режим «Сайт» (по умолчанию): окно открывает опубликованный портал (https://ku-portal.onrender.com).
+ * Это тот же сайт — те же аккаунты, оценки, расписание, AI-помощник, онлайн-экзамен и настройки,
+ * поэтому программа, сайт и приложение для телефона связаны общими данными.
  *
- * Режим «Сайт»: окно открывает опубликованный портал (например, https://ku-portal.onrender.com).
+ * Режим «Встроенный сервер»: программа запускает у себя тот же server.js сайта (папка app/,
+ * без изменений) — портал работает без интернета, AI-помощник — через LM Studio на этом ПК,
+ * телефон может подключиться к ПК по Wi-Fi.
  */
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session, safeStorage, utilityProcess } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
@@ -23,7 +22,7 @@ if (process.platform === 'win32') app.setAppUserModelId('kz.ku.portal.desktop');
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
 const USER_DIR = app.getPath('userData');
-const DATA_DIR = path.join(USER_DIR, 'data');
+const DATA_DIR = path.join(USER_DIR, 'portal', 'data'); // данные встроенного сервера
 const LOG_FILE = path.join(USER_DIR, 'server.log');
 const WIN_STATE = path.join(USER_DIR, 'window.json');
 const UI = (f) => path.join(__dirname, 'ui', f);
@@ -31,7 +30,6 @@ const UI = (f) => path.join(__dirname, 'ui', f);
 let store;            // createConfigStore(...) после app.ready (safeStorage доступен только тогда)
 let cfg;              // текущие настройки
 let serverPort = null;
-let serverLan = false; // сервер запущен с доступом из локальной сети
 let startError = null;
 let mainWin = null;
 let settingsWin = null;
@@ -59,40 +57,84 @@ function setupLog() {
 }
 
 /* ------------------------------ встроенный сервер ------------------------------ */
-function portFree(port, host) {
+/* Исходники сайта (app/) не меняются ни на байт. Чтобы данные (data/db.json, data/exam-sync.json)
+   сохранялись между обновлениями программы, код сайта копируется в папку пользователя
+   (<userData>/portal) и запускается оттуда отдельным процессом — ровно как `node server.js`. */
+const RUNTIME_DIR = path.join(USER_DIR, 'portal');
+const KEEP = new Set(['db.json', 'exam-sync.json', 'ku_context.json']); // данные пользователя
+let serverProc = null;
+let quitting = false;
+
+function prepareRuntime() {
+  const src = appDir();
+  fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+  fs.cpSync(src, RUNTIME_DIR, {
+    recursive: true,
+    force: true,
+    filter: (f) => {
+      const rel = path.relative(src, f);
+      if (rel.split(path.sep)[0] === 'node_modules') return false;
+      return !(path.dirname(rel) === 'data' && KEEP.has(path.basename(rel)));
+    },
+  });
+}
+
+function portFree(port) {
   return new Promise((resolve) => {
     const s = net.createServer();
     s.once('error', () => resolve(false));
     s.once('listening', () => s.close(() => resolve(true)));
-    s.listen(port, host);
+    s.listen(port); // как server.js: все интерфейсы
   });
 }
-async function pickPort(start, host) {
-  for (let p = start; p < start + 30 && p <= 65535; p++) if (await portFree(p, host)) return p;
+async function pickPort(start) {
+  for (let p = start; p < start + 30 && p <= 65535; p++) if (await portFree(p)) return p;
   throw new Error(`Нет свободного порта в диапазоне ${start}–${start + 29}`);
 }
 
-async function startServer(c) {
-  const host = c.lan ? '0.0.0.0' : '127.0.0.1';
-  const port = await pickPort(c.port, host);
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  Object.assign(process.env, {
-    PORT: String(port),
-    HOST: host,
-    KU_DATA_DIR: DATA_DIR,
-    LM_STUDIO_URL: c.lmUrl,
-    LM_STUDIO_MODEL: c.lmModel,
-    DEMO: c.demo ? '1' : '0',
-  });
-  if (c.lmKey) process.env.LM_STUDIO_API_KEY = c.lmKey; else delete process.env.LM_STUDIO_API_KEY;
+async function waitHttp(url, ms, isDead) {
+  const until = Date.now() + ms;
+  let last = '';
+  while (Date.now() < until) {
+    if (isDead()) throw new Error('процесс сервера завершился');
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) return;
+      last = 'HTTP ' + r.status;
+    } catch (e) { last = e.cause?.code || e.message; }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error('сервер не ответил: ' + last);
+}
 
-  const server = require(path.join(appDir(), 'server.js'));
-  await new Promise((resolve, reject) => {
-    if (server.listening) return resolve();
-    server.once('listening', resolve);
-    server.once('error', reject);
+async function startServer(c) {
+  prepareRuntime();
+  const port = await pickPort(c.port);
+  const env = { ...process.env, PORT: String(port), LM_STUDIO_URL: c.lmUrl, LM_STUDIO_MODEL: c.lmModel, DEMO: c.demo ? '1' : '0' };
+  if (c.lmKey) env.LM_STUDIO_API_KEY = c.lmKey; else delete env.LM_STUDIO_API_KEY;
+  delete env.ELECTRON_RUN_AS_NODE;
+
+  let dead = false;
+  const proc = utilityProcess.fork(path.join(RUNTIME_DIR, 'server.js'), [], { cwd: RUNTIME_DIR, env, stdio: 'pipe', serviceName: 'KU Portal server' });
+  serverProc = proc;
+  const pipe = (lvl) => (d) => String(d).split(/\r?\n/).filter(Boolean).forEach((l) => console[lvl]('[server] ' + l));
+  if (proc.stdout) proc.stdout.on('data', pipe('log'));
+  if (proc.stderr) proc.stderr.on('data', pipe('error'));
+  proc.on('exit', (code) => {
+    dead = true;
+    if (serverProc === proc) serverProc = null;
+    if (!quitting) {
+      console.error('[desktop] встроенный сервер остановился, код', code);
+      startError = startError || `Процесс сервера завершился (код ${code}). Подробности — в журнале сервера.`;
+      if (serverPort) showError('Встроенный сервер остановился', startError);
+    }
   });
-  server.on('error', (e) => console.error('[server]', e));
+  try {
+    await waitHttp(`http://127.0.0.1:${port}/`, 30000, () => dead);
+  } catch (e) {
+    try { proc.kill(); } catch { /* уже нет */ }
+    throw e;
+  }
   return port;
 }
 
@@ -251,24 +293,17 @@ function openSettings() {
 }
 
 function showPhoneHelp() {
-  if (cfg.mode !== 'local') {
+  if (cfg.mode !== 'local' || !serverPort) {
     return dialog.showMessageBox(mainWin, {
-      type: 'info', title: 'Подключить телефон',
-      message: 'Приложение открывает сайт портала',
-      detail: `В мобильном приложении KU Portal выберите «Сайт» и укажите тот же адрес:\n${cfg.remoteUrl}`,
+      type: 'info', title: 'Телефон',
+      message: 'Приложение для телефона связано с тем же сайтом',
+      detail: `Установите KU Portal на Android и выберите «Сайт портала» — аккаунты, оценки и онлайн-экзамен будут те же, что здесь:\n${cfg.remoteUrl}`,
     });
-  }
-  if (!serverLan) {
-    return dialog.showMessageBox(mainWin, {
-      type: 'info', title: 'Подключить телефон', buttons: ['Открыть настройки', 'Закрыть'], defaultId: 0,
-      message: 'Доступ с телефона выключен',
-      detail: cfg.lan ? 'Доступ включён в настройках, но вступит в силу после перезапуска приложения.' : 'Включите «Доступ с телефона по Wi-Fi» в настройках. После перезапуска здесь появится адрес для мобильного приложения.',
-    }).then((r) => { if (r.response === 0) openSettings(); });
   }
   const list = lanAddresses(serverPort);
   return dialog.showMessageBox(mainWin, {
     type: 'info', title: 'Подключить телефон',
-    message: list.length ? 'Введите этот адрес в мобильном приложении KU Portal' : 'ПК не подключён к сети',
+    message: list.length ? 'Введите этот адрес в приложении KU Portal на телефоне («Компьютер с KU Portal Desktop»)' : 'ПК не подключён к сети',
     detail: list.length
       ? list.map((a) => `${a.url}   (${a.name})`).join('\n') + '\n\nТелефон и компьютер должны быть в одной Wi-Fi сети. Если Windows спросит про брандмауэр — разрешите доступ в частных сетях.'
       : 'Подключите компьютер к Wi-Fi или локальной сети.',
@@ -285,7 +320,7 @@ function buildMenu() {
         { label: 'Главная портала', accelerator: 'CmdOrCtrl+H', click: () => openTarget() },
         { label: 'Настройки приложения…', accelerator: 'CmdOrCtrl+,', click: openSettings },
         { type: 'separator' },
-        { label: 'Открыть папку с данными', click: () => shell.openPath(DATA_DIR) },
+        { label: 'Открыть папку с данными', click: () => { fs.mkdirSync(DATA_DIR, { recursive: true }); shell.openPath(DATA_DIR); } },
         { label: 'Открыть журнал сервера', click: () => shell.openPath(LOG_FILE) },
         { type: 'separator' },
         isMac ? { role: 'close', label: 'Закрыть окно' } : { role: 'quit', label: 'Выход' },
@@ -315,7 +350,7 @@ function buildMenu() {
     {
       label: 'Справка',
       submenu: [
-        { label: 'Подключить телефон…', click: showPhoneHelp },
+        { label: 'Телефон…', click: showPhoneHelp },
         { label: 'Открыть портал в браузере', click: () => targetUrl && shell.openExternal(targetUrl) },
         { type: 'separator' },
         { label: 'Репозиторий на GitHub', click: () => shell.openExternal('https://github.com/SAKEDA-hub/ku-portal-desktop') },
@@ -373,8 +408,7 @@ function setupIpc() {
       info: {
         version: app.getVersion(),
         running: cfg.mode === 'local' ? { port: serverPort, error: startError } : null,
-        lanActive: serverLan,
-        lan: serverLan && serverPort ? lanAddresses(serverPort) : [],
+        lan: cfg.mode === 'local' && serverPort ? lanAddresses(serverPort) : [],
         dataDir: DATA_DIR,
         encrypt: store.canEncrypt(),
       },
@@ -390,7 +424,7 @@ function setupIpc() {
         type: 'question', buttons: ['Перезапустить сейчас', 'Позже'], defaultId: 0, cancelId: 1,
         title: 'Перезапуск', message: 'Настройки сохранены', detail: 'Изменения вступят в силу после перезапуска приложения.',
       });
-      if (r.response === 0) { app.relaunch(); app.exit(0); }
+      if (r.response === 0) restartApp();
       return { saved: true, restart: r.response !== 0 };
     }
     if (cfg.remoteUrl !== prev.remoteUrl && cfg.mode === 'remote') { targetUrl = cfg.remoteUrl + '/'; openTarget(); }
@@ -410,6 +444,7 @@ function setupIpc() {
   });
   ipcMain.handle('settings:openPath', (e, which) => {
     if (!fromSettings(e)) throw new Error('forbidden');
+    if (which !== 'log') fs.mkdirSync(DATA_DIR, { recursive: true });
     return shell.openPath(which === 'log' ? LOG_FILE : DATA_DIR);
   });
   ipcMain.handle('settings:defaults', (e) => {
@@ -438,9 +473,8 @@ app.whenReady().then(async () => {
   if (cfg.mode === 'local') {
     try {
       serverPort = await startServer(cfg);
-      serverLan = cfg.lan;
       targetUrl = `http://127.0.0.1:${serverPort}/`;
-      console.log(`[desktop] встроенный сервер: ${targetUrl}${cfg.lan ? ' (доступ из локальной сети включён)' : ''}`);
+      console.log(`[desktop] встроенный сервер: ${targetUrl}`);
     } catch (e) {
       startError = e.stack || e.message;
       console.error('[desktop] сервер не запустился:', e);
@@ -454,4 +488,15 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createMainWindow(); });
 });
 
+function restartApp() {
+  quitting = true;
+  if (serverProc) { try { serverProc.kill(); } catch { /* уже остановлен */ } }
+  app.relaunch();
+  app.exit(0);
+}
+
+app.on('before-quit', () => {
+  quitting = true;
+  if (serverProc) { try { serverProc.kill(); } catch { /* уже остановлен */ } }
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

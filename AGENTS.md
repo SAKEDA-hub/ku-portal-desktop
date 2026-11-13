@@ -2,7 +2,8 @@
 
 Репозиторий — приложения для портала KU: `desktop/` (Electron) и `mobile/android/` (Android WebView). Сам портал (`app/`) — копия github.com/SAKEDA-hub/ku-portal; его правила — в `app/` не дублируются, смотрите AGENTS.md исходного репозитория.
 
-- `app/` не править по существу: менять сайт нужно в ku-portal, затем `./scripts/sync-app.sh ../ku-portal`. Допустимый патч — только `KU_DATA_DIR`, `HOST`, `module.exports` в `app/server.js`.
+- `app/` не править вообще: это точная копия ku-portal (проверяет `tests/server.test.js`). Обновление — `./scripts/sync-app.sh ../ku-portal`. Репозиторий ku-portal из этого проекта не трогать.
+- По умолчанию приложения открывают сайт (`https://ku-portal.onrender.com`) — так они связаны с сайтом общими данными. Встроенный сервер — опция в настройках ПК.
 - Десктоп: портал в окне без доступа к Node (`contextIsolation`, `sandbox`, `nodeIntegration: false`). Портал получает только `window.kuDesktop` (`preload.js`). IPC настроек принимается только от окна настроек (`fromSettings`). Новые разрешения — через `setupPermissions()` и только для своего origin.
 - Android: всё, чего нет в WebView, — через `window.KUApp` (`WebBridge.java`) и `assets/bridge.js`. Каждый метод моста проверяет страницу (`trusted()` / `fromApp()`); смена сервера — только со страниц приложения.
 - Тексты интерфейса — по-русски, как в портале; цвета — переменные из `public/style.css` (`desktop/ui/ui.css` повторяет их).
