@@ -15,6 +15,10 @@ on:
 permissions:
   contents: write
 
+env:
+  KU_VERSION_NAME: 1.0.${{ github.run_number }}
+  KU_VERSION_CODE: ${{ github.run_number }}
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -71,7 +75,7 @@ jobs:
         working-directory: desktop
         run: |
           set -o pipefail
-          { npm install --no-audit --no-fund && npx electron-builder ${{ matrix.args }} --publish never && ls -la dist; } 2>&1 | tee ../build.log
+          { npm install --no-audit --no-fund && npx electron-builder ${{ matrix.args }} --publish never -c.extraMetadata.version=$KU_VERSION_NAME && ls -la dist; } 2>&1 | tee ../build.log
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.name }}
@@ -160,6 +164,8 @@ jobs:
             echo "- Android: [KU-Portal.apk]($B/KU-Portal.apk)"
             echo ""
             echo "Приложения открывают сайт портала https://ku-portal.onrender.com — те же аккаунты, оценки, расписание, AI-помощник и онлайн-экзамен."
+            echo ""
+            echo "Установка и инструкция: https://github.com/${GITHUB_REPOSITORY}#-инструкция-для-пользователей"
             echo ""
             echo "Сборка из коммита ${GITHUB_SHA::7}. Отсутствующий файл — значит, эта часть сборки не удалась (см. Actions)."
           } > notes.md

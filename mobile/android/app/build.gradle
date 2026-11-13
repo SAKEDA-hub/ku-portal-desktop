@@ -10,8 +10,9 @@ android {
         applicationId 'kz.ku.portal'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0.0'
+        // В CI номер сборки подставляется из GitHub Actions (растёт с каждым релизом)
+        versionCode((System.getenv('KU_VERSION_CODE') ?: '1') as int)
+        versionName(System.getenv('KU_VERSION_NAME') ?: '1.0.0')
         // Сервер по умолчанию (экран «Подключение»)
         buildConfigField 'String', 'DEFAULT_SERVER', '"https://ku-portal.onrender.com"'
     }
