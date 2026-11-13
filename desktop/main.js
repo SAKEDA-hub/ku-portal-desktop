@@ -28,6 +28,9 @@ const DATA_DIR = path.join(USER_DIR, 'portal', 'data'); // данные встр
 const LOG_FILE = path.join(USER_DIR, 'server.log');
 const WIN_STATE = path.join(USER_DIR, 'window.json');
 const UI = (f) => path.join(__dirname, 'ui', f);
+// поправки раскладки для узкого окна (те же, что в приложении для телефона) — сайт не меняется
+let APP_FIX_CSS = '';
+try { APP_FIX_CSS = fs.readFileSync(UI('app-fix.css'), 'utf8'); } catch { /* без поправок */ }
 
 let store;            // createConfigStore(...) после app.ready (safeStorage доступен только тогда)
 let cfg;              // текущие настройки
@@ -246,6 +249,9 @@ function hardenContents(wc) {
     return { action: 'deny' };
   });
   wc.on('did-create-window', (child) => hardenContents(child.webContents));
+  wc.on('did-finish-load', () => {
+    if (APP_FIX_CSS && sameOrigin(wc.getURL())) wc.insertCSS(APP_FIX_CSS).catch(() => {});
+  });
   wc.on('will-navigate', (e, url) => {
     if (sameOrigin(url) || isLocalUi(url)) return;
     e.preventDefault();

@@ -99,6 +99,10 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setSupportMultipleWindows(false);    // «открыть в новой вкладке» — в этом же окне
         s.setJavaScriptCanOpenWindowsAutomatically(true);
+        // Крупный шрифт системы WebView применяет только к тексту (кнопки не растут), из-за этого
+        // элементы налезали друг на друга. Размер текста — в самом портале: «Кабинет» → «Оформление»
+        // → «Размер текста» (и в настройках онлайн-экзамена), там раскладка подстраивается.
+        s.setTextZoom(100);
         s.setUserAgentString(s.getUserAgentString() + " KUPortalApp/" + BuildConfig.VERSION_NAME);
         CookieManager.getInstance().setAcceptCookie(true);
 

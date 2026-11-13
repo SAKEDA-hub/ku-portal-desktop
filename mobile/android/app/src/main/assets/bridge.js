@@ -2,6 +2,7 @@
  * KU Portal (Android): мост между порталом и системой. Подключается приложением к каждой
  * странице портала/онлайн-экзамена (MainActivity.injectBridge). Повторное подключение безопасно.
  *  - window.Notification → системные уведомления Android (в WebView своего Notification API нет);
+ *  - поправки раскладки на узком экране (верхняя панель онлайн-экзамена, плитки сервисов);
  *  - скачивание blob:/data:-ссылок (экспорт данных JSON, CSV ведомости, tests.json) → «Сохранить как».
  */
 (function () {
@@ -42,6 +43,18 @@
   try {
     Object.defineProperty(window, 'Notification', { value: KUNotification, writable: true, configurable: true });
   } catch (e) { window.Notification = KUNotification; }
+
+  /* ---------- раскладка на узких экранах телефонов (копия desktop/ui/app-fix.css) ---------- */
+  var APP_FIX_CSS = "/* KU Portal (приложения): поправки раскладки для узких экранов телефонов.\n   Сайт не меняется — стиль добавляет приложение поверх страниц портала и онлайн-экзамена. */\n\n/* Онлайн-экзамен: верхняя панель не помещалась — RU/EN/KZ налезал на логотип и кнопки профиля.\n   На узком экране убираем разделители, логотип (есть кнопка «На главную») и шестерёнку\n   (аватар открывает те же настройки), кнопки чуть компактнее. */\n@media (max-width: 480px) {\n  .tb-in { gap: 4px !important; padding: 0 8px !important; }\n  .tb-in .tb-sep { display: none !important; }\n  .tb-in .brand-t { display: none !important; }\n  .tb-in .tb-ib[data-act=\"tab\"] ~ .brand { display: none !important; }\n  .tb-in .tb-ib[data-act=\"account\"] { display: none !important; }\n  .tb-in .tb-ib { width: 36px !important; height: 36px !important; }\n  .tb-in .lang button { min-width: 30px !important; height: 30px !important; padding: 0 5px !important; font-size: 12px !important; }\n  .tb-in .avatar { width: 34px !important; height: 34px !important; font-size: 14px !important; }\n  .tb-in .ku-back { padding: 0 6px !important; }\n}\n\n/* Портал, главная → «Сервисы»: на экранах ~320 px длинные подписи («Успеваемость»)\n   растягивали плитки шире экрана. */\n@media (max-width: 360px) {\n  .srv-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; margin-left: 10px !important; margin-right: 10px !important; }\n  .srv { padding-left: 4px !important; padding-right: 4px !important; min-width: 0 !important; }\n  .srv span { font-size: 10px !important; letter-spacing: -0.1px; overflow-wrap: anywhere; }\n}\n";
+  function appFix() {
+    if (document.getElementById('ku-app-fix')) return;
+    var st = document.createElement('style');
+    st.id = 'ku-app-fix';
+    st.textContent = APP_FIX_CSS;
+    (document.head || document.documentElement).appendChild(st);
+  }
+  appFix();
+  document.addEventListener('DOMContentLoaded', appFix);
 
   /* ---------- сохранение файлов ---------- */
   function saveHref(href, name) {

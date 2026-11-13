@@ -106,8 +106,35 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
     return true;
   });
 
-  await step(`настоящий сайт ${REAL} (не блокирует сборку)`, false, async () => {
+  await step('онлайн-экзамен после входа: верхняя панель не налезает (узкий экран)', true, async () => {
     try { c.close(); } catch { /* */ }
+    let x = await page(base, (t) => t.url.startsWith('http://10.0.2.2:3000'), 10000);
+    await x.evaluate(`location.href = '/exam-sync/?from=ku-portal&back=' + encodeURIComponent(location.origin + '/#/exam'), true`);
+    await sleep(2500);
+    x.close();
+    x = await page(base, (t) => t.url.startsWith('http://10.0.2.2:3000/exam-sync/'), 20000);
+    await x.waitFor(`document.querySelectorAll('#app input').length >= 2`, 20000, 'форма входа в онлайн-экзамен');
+    await x.evaluate(`(() => { const i = document.querySelectorAll('#app input'); const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+      set(i[0], 'user'); set(i[1], '1'); const f = i[0].closest('form'); if (f) f.requestSubmit ? f.requestSubmit() : f.submit(); else i[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+    await x.waitFor(`!!document.querySelector('.tb-in .avatar')`, 20000, 'вход в онлайн-экзамен (аватар в панели)');
+    await sleep(1500);
+    screen('exam-topbar');
+    const r = await x.evaluate(`(() => {
+      const vw = innerWidth, vis = (e) => { if (!e) return false; const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+      const els = [...document.querySelectorAll('.tb-in > *')].filter((e) => !e.classList.contains('grow') && !e.classList.contains('tb-sep'))
+        .map((e) => e.classList.contains('brand') ? (vis(e.querySelector('.brand-t')) ? e : e.querySelector('.brand-ic')) : e.classList.contains('me') ? e.querySelector('.avatar') : e).filter(vis);
+      const rs = els.map((e) => ({ c: String(e.className).slice(0, 24), l: e.getBoundingClientRect().left, r: e.getBoundingClientRect().right }));
+      const bad = []; for (let i = 1; i < rs.length; i++) if (rs[i].l < rs[i - 1].r - 0.5) bad.push(rs[i - 1].c + ' × ' + rs[i].c);
+      if (rs.length && rs[rs.length - 1].r > vw + 0.5) bad.push('за краем экрана');
+      return { vw, fix: !!document.getElementById('ku-app-fix'), items: rs.length, bad, page: document.documentElement.scrollWidth };
+    })()`);
+    x.close();
+    if (!r.fix) throw new Error('поправки раскладки не подключены');
+    if (r.bad.length || r.page > r.vw) throw new Error('налезают: ' + r.bad.join(', ') + ' · ширина ' + r.page + '/' + r.vw);
+    return r;
+  });
+
+  await step(`настоящий сайт ${REAL} (не блокирует сборку)`, false, async () => {
     // «Сменить сервер» из портала → экран подключения → «Сайт портала»
     const cur = await page(base, (x) => x.url.startsWith('http://10.0.2.2:3000'), 10000);
     await cur.evaluate(`KUApp.openConnect(), true`);
