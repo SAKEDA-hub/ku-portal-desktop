@@ -6,6 +6,7 @@ NAME="$1"; STATUS="${2:-unknown}"
 DIR="${RUNNER_TEMP:-/tmp}/cilog-$NAME"
 rm -rf "$DIR" && mkdir -p "$DIR"
 if [ -f build.log ]; then tail -c 400000 build.log > "$DIR/build.log"; else echo "build.log отсутствует" > "$DIR/build.log"; fi
+if [ -d smoke-out ]; then cp -r smoke-out "$DIR/smoke"; fi
 printf 'status=%s\nsha=%s\nrun=%s\n' "$STATUS" "${GITHUB_SHA:-}" "${GITHUB_RUN_ID:-}" > "$DIR/STATUS"
 cd "$DIR" || exit 0
 git init -q

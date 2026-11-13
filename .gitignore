@@ -13,3 +13,4 @@ mobile/android/out/
 *.log
 .DS_Store
 .idea/
+smoke-out/

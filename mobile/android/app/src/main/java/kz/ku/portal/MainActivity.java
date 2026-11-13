@@ -80,6 +80,10 @@ public class MainActivity extends Activity {
         server = prefs.getString(KEY_SERVER, null);
         createNotificationChannel();
 
+        // отладка WebView (Chrome DevTools) — только в отладочной сборке, для автопроверок
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
         web = new WebView(this);
         web.setBackgroundColor(0xFFF8F8F7);
         setContentView(web);

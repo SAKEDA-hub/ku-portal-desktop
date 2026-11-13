@@ -17,6 +17,8 @@ const path = require('path');
 const { createConfigStore, sanitize, needsRestart } = require('./config');
 
 app.setName('KU Portal');
+// для автопроверок и переносной установки: своя папка данных
+if (process.env.KU_PORTAL_USER_DATA) app.setPath('userData', process.env.KU_PORTAL_USER_DATA);
 if (process.platform === 'win32') app.setAppUserModelId('kz.ku.portal.desktop'); // уведомления Windows
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
