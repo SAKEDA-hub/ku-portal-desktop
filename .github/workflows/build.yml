@@ -168,6 +168,12 @@ jobs:
     # публикуем только если ВСЕ сборки и автопроверки прошли — иначе остаётся прошлый рабочий релиз
     if: ${{ !cancelled() && needs.desktop.result == 'success' && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
+    env:
+      # Публичный репозиторий только с готовыми файлами (исходники остаются закрытыми).
+      # Нужен секрет RELEASES_TOKEN (fine-grained PAT: Contents — Read and write на этот репозиторий);
+      # без секрета шаг публикации туда просто пропускается.
+      PUBLIC_REPO: ${{ vars.PUBLIC_RELEASES_REPO || 'SAKEDA-hub/ku-portal-project' }}
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -203,6 +209,31 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: KU Portal ${{ steps.meta.outputs.tag }}
           body_path: notes.md
+          make_latest: 'true'
+          files: out/*
+      - name: Описание для публичного репозитория
+        if: ${{ env.RELEASES_TOKEN != '' }}
+        shell: bash
+        run: |
+          {
+            echo "🌐 Сайт: https://ku-portal.onrender.com"
+            echo ""
+            echo "- Windows — установщик: KU-Portal-Setup.exe, без установки: KU-Portal-Portable.exe"
+            echo "- Android 7.0+: KU-Portal.apk"
+            echo "- macOS — Apple Silicon: KU-Portal-mac-arm64.dmg, Intel: KU-Portal-mac-x64.dmg"
+            echo "- Linux: KU-Portal-linux.AppImage"
+            echo ""
+            echo "Файлы — в разделе Assets ниже. Инструкция по установке: https://github.com/${PUBLIC_REPO}#установка"
+          } > notes-public.md
+      - name: Публикация в публичный репозиторий (только файлы)
+        if: ${{ env.RELEASES_TOKEN != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.PUBLIC_REPO }}
+          token: ${{ env.RELEASES_TOKEN }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: KU Portal ${{ steps.meta.outputs.tag }}
+          body_path: notes-public.md
           make_latest: 'true'
           files: out/*
       - name: Итог → ветка ci/release
