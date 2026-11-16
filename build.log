@@ -1,0 +1,10 @@
+tag=v1.0.6 desktop=success android=success
+total 467452
+drwxr-xr-x  2 runner runner      4096 Nov 16 12:42 .
+drwxr-xr-x 10 runner runner      4096 Nov 16 12:42 ..
+-rw-r--r--  1 runner runner  82492597 Nov 16 12:42 KU-Portal-Portable.exe
+-rw-r--r--  1 runner runner  82723901 Nov 16 12:42 KU-Portal-Setup.exe
+-rw-r--r--  1 runner runner 109081243 Nov 16 12:42 KU-Portal-linux.AppImage
+-rw-r--r--  1 runner runner  99678915 Nov 16 12:42 KU-Portal-mac-arm64.dmg
+-rw-r--r--  1 runner runner 104297532 Nov 16 12:42 KU-Portal-mac-x64.dmg
+-rw-r--r--  1 runner runner    374768 Nov 16 12:42 KU-Portal.apk
