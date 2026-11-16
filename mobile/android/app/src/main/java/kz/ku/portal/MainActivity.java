@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
@@ -56,6 +57,10 @@ public class MainActivity extends Activity {
     static final String KEY_NOTIF_ASKED = "notif_asked";
     static final String ASSET_BASE = "file:///android_asset/ui/";
     static final String CHANNEL_ID = "ku_portal";
+    // вызов на speaking: отдельный громкий канал со своей мелодией (res/raw/ku_call.wav) и сильной вибрацией
+    static final String CALL_CHANNEL_ID = "ku_call";
+    static final String CALL_TAG = "edu-call";
+    static final long[] CALL_VIBRATION = {0, 350, 120, 350, 120, 700};
 
     private static final int REQ_FILE_CHOOSER = 11;
     private static final int REQ_SAVE_FILE = 12;
@@ -310,7 +315,19 @@ public class MainActivity extends Activity {
         ch.enableVibration(true);
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) nm.createNotificationChannel(ch);
+        NotificationChannel call = new NotificationChannel(CALL_CHANNEL_ID, getString(R.string.notif_call_channel), NotificationManager.IMPORTANCE_HIGH);
+        call.setDescription(getString(R.string.notif_call_channel_desc));
+        call.setSound(callSound(), new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+        call.enableVibration(true);
+        call.setVibrationPattern(CALL_VIBRATION);
+        call.enableLights(true);
+        call.setLightColor(0xFFF6C619);
+        if (nm != null) nm.createNotificationChannel(call);
     }
+
+    private Uri callSound() { return Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.ku_call); }
 
     String notifPermission() {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -340,8 +357,9 @@ public class MainActivity extends Activity {
         if (!"granted".equals(notifPermission())) return;
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        boolean call = CALL_TAG.equals(tag);
         android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26
-                ? new android.app.Notification.Builder(this, CHANNEL_ID)
+                ? new android.app.Notification.Builder(this, call ? CALL_CHANNEL_ID : CHANNEL_ID)
                 : new android.app.Notification.Builder(this);
         b.setSmallIcon(R.drawable.ic_stat_ku)
                 .setContentTitle(title)
@@ -350,7 +368,12 @@ public class MainActivity extends Activity {
                 .setColor(0xFF05A4BA)
                 .setAutoCancel(true)
                 .setContentIntent(pi);
-        if (Build.VERSION.SDK_INT < 26) b.setPriority(android.app.Notification.PRIORITY_HIGH).setDefaults(android.app.Notification.DEFAULT_ALL);
+        if (call) b.setCategory(android.app.Notification.CATEGORY_EVENT).setColor(0xFFF6C619);
+        if (Build.VERSION.SDK_INT < 26) {
+            b.setPriority(android.app.Notification.PRIORITY_HIGH);
+            if (call) b.setSound(callSound()).setVibrate(CALL_VIBRATION).setDefaults(android.app.Notification.DEFAULT_LIGHTS);
+            else b.setDefaults(android.app.Notification.DEFAULT_ALL);
+        }
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(tag == null || tag.isEmpty() ? "ku" : tag, 1, b.build());
     }

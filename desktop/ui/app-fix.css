@@ -1,15 +1,14 @@
 /* KU Portal (приложения): поправки раскладки для узких экранов телефонов.
    Сайт не меняется — стиль добавляет приложение поверх страниц портала и онлайн-экзамена. */
 
-/* Онлайн-экзамен: верхняя панель не помещалась — RU/EN/KZ налезал на логотип и кнопки профиля.
-   На узком экране убираем разделители, логотип (есть кнопка «На главную») и шестерёнку
+/* Онлайн-экзамен: верхняя панель на узком экране — без разделителей и подписи логотипа
+   (значок логотипа остаётся — он ведёт на главную), шестерёнка внутри кнопки профиля скрыта
    (аватар открывает те же настройки), кнопки чуть компактнее. */
 @media (max-width: 480px) {
   .tb-in { gap: 4px !important; padding: 0 8px !important; }
   .tb-in .tb-sep { display: none !important; }
   .tb-in .brand-t { display: none !important; }
-  .tb-in .tb-ib[data-act="tab"] ~ .brand { display: none !important; }
-  .tb-in .tb-ib[data-act="account"] { display: none !important; }
+  .tb-in .me-gear { display: none !important; }
   .tb-in .tb-ib { width: 36px !important; height: 36px !important; }
   .tb-in .lang button { min-width: 30px !important; height: 30px !important; padding: 0 5px !important; font-size: 12px !important; }
   .tb-in .avatar { width: 34px !important; height: 34px !important; font-size: 14px !important; }
