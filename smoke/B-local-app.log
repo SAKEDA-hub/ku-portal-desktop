@@ -1,0 +1,15 @@
+[2761:1116/123918.474343:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2761:1116/123918.474382:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2761:1116/123918.474389:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2761:1116/123918.474396:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2761:1116/123918.474401:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:40083/devtools/browser/6c6fbdd4-b929-40fa-87ac-bdfd21a5dd45
+[2785:1116/123918.557704:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+[server] [AI] Загружена локальная база KU: 1565 фрагментов
+[server] [DEMO] Созданы тестовые аккаунты (пароль 1234): teacher@demo.kz, student@demo.kz, student2@demo.kz
+[server] KU Portal: http://localhost:42169
+[desktop] встроенный сервер: http://127.0.0.1:42169/
+[2761:1116/123918.823357:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[server] [AI] LM Studio недоступна: fetch failed
+[server] [AI] Запрос к LM Studio не выполнен: fetch failed

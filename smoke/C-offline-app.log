@@ -1,0 +1,14 @@
+[2871:1116/123928.610347:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2871:1116/123928.610399:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2871:1116/123928.610408:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2871:1116/123928.610414:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2871:1116/123928.610418:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:43895/devtools/browser/eeceb816-0ebe-464e-b6f9-ec8bdd445ede
+[2871:1116/123928.638550:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2896:1116/123928.675644:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+[2915:1116/123928.707567:ERROR:command_buffer_proxy_impl.cc(131)] ContextResult::kTransientFailure: Failed to send GpuControl.CreateCommandBuffer.
+(node:2871) electron: Failed to load URL: http://127.0.0.1:45339/ with error: ERR_CONNECTION_REFUSED
+(Use `ku-portal-desktop --trace-warnings ...` to show where the warning was created)
+[2871:1116/123928.769926:ERROR:interface_endpoint_client.cc(725)] Message 6 rejected by interface blink.mojom.WidgetHost
+[2871:1116/123928.769943:ERROR:interface_endpoint_client.cc(725)] Message 7 rejected by interface blink.mojom.WidgetHost
