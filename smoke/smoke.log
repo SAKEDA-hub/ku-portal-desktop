@@ -1,0 +1,9 @@
+программа: desktop/dist/mac-arm64/KU Portal.app/Contents/MacOS/KU Portal · darwin arm64
+результат: {"login":true,"grades":200,"schedule":200,"ai":{"online":false,"model":"google/gemma-4-e4b","ctx":1565,"reason":"unreachable"},"aiReply":true,"notification":"granted","exam":true,"examBack":true,"notifOk":true}
+✔ A. режим «Сайт»: вход, оценки, расписание, AI, кабинет, онлайн-экзамен и возврат
+результат: {"login":true,"grades":200,"schedule":200,"ai":{"online":false,"model":"google/gemma-4-e4b","ctx":1565,"reason":"unreachable"},"aiReply":true,"notification":"granted","exam":true,"examBack":true,"notifOk":true}
+✔ B. встроенный сервер: портал запускается внутри программы
+✔ C. сайт недоступен: экран ошибки с кнопками
+результат: {"login":true,"grades":200,"schedule":200,"ai":{"online":false,"model":"google/gemma-4-e4b","ctx":1565,"reason":"http"},"aiReply":true,"notification":"granted","exam":true,"examBack":true,"notifOk":true}
+✔ D. настоящий сайт https://ku-portal.onrender.com (не блокирует сборку)
+ВСЕ ОБЯЗАТЕЛЬНЫЕ ПРОВЕРКИ ПРОЙДЕНЫ
