@@ -1,0 +1,9 @@
+
+
+DevTools listening on ws://127.0.0.1:50197/devtools/browser/3ed703e3-5807-4c41-a9fa-e65a62ea5835
+[server] [AI] Загружена локальная база KU: 1565 фрагментов
+[server] [DEMO] Созданы тестовые аккаунты (пароль 1234): teacher@demo.kz, student@demo.kz, student2@demo.kz
+[server] KU Portal: http://localhost:50196
+[desktop] встроенный сервер: http://127.0.0.1:50196/
+[server] [AI] LM Studio недоступна: fetch failed
+[server] [AI] Запрос к LM Studio не выполнен: fetch failed
