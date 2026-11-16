@@ -1,0 +1,12 @@
+устройство: Android 14 · WebView versionName=113.0.5672.136 · 
+✔ экран «Подключение» открывается при первом запуске
+результат: {"login":true,"grades":200,"schedule":200,"ai":{"online":false,"model":"google/gemma-4-e4b","ctx":1565,"reason":"unreachable"},"aiReply":true,"notification":"default","exam":true,"examBack":true,"notifOk":true}
+✔ подключение к компьютеру 10.0.2.2:3000 и сценарий портала
+✔ мост приложения подключён (KUApp, Notification)
+✔ разрешение на уведомления: до разрешения «default», после — «granted»
+✔ системное уведомление Android («Проверить уведомление» в кабинете)
+✔ сохранение файла («Скачать мои данные» → системное окно «Сохранить»)
+✔ онлайн-экзамен после входа: верхняя панель не налезает (узкий экран)
+результат: {"login":true,"grades":200,"schedule":200,"ai":{"online":false,"model":"google/gemma-4-e4b","ctx":1565,"reason":"http"},"aiReply":true,"notification":"granted","exam":true,"examBack":true,"notifOk":true}
+✔ настоящий сайт https://ku-portal.onrender.com (не блокирует сборку)
+ВСЕ ОБЯЗАТЕЛЬНЫЕ ПРОВЕРКИ ПРОЙДЕНЫ
