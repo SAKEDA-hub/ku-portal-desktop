@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: bridge.js содержит точную копию desktop/ui/app-fix.css
+ok 1 - bridge.js содержит точную копию desktop/ui/app-fix.css
+  ---
+  duration_ms: 1.881318
+  ...
+# Subtest: sanitize: значения по умолчанию и мусор
+ok 2 - sanitize: значения по умолчанию и мусор
+  ---
+  duration_ms: 3.526466
+  ...
+# Subtest: store: ключ LM Studio хранится зашифрованным
+ok 3 - store: ключ LM Studio хранится зашифрованным
+  ---
+  duration_ms: 1.883108
+  ...
+# Subtest: store: без хранилища ключей и с битым файлом
+ok 4 - store: без хранилища ключей и с битым файлом
+  ---
+  duration_ms: 1.017722
+  ...
+# Subtest: needsRestart
+ok 5 - needsRestart
+  ---
+  duration_ms: 0.389452
+  ...
+# [server] [AI] Загружена локальная база KU: 1565 фрагментов
+# [server] [DEMO] Созданы тестовые аккаунты (пароль 1234): teacher@demo.kz, student@demo.kz, student2@demo.kz
+# [server] KU Portal: http://localhost:3870
+# [desktop] встроенный сервер: http://127.0.0.1:3870/
+# [server] [AI] LM Studio недоступна: fetch failed
+# Subtest: desktop main: встроенный сервер и окно
+ok 6 - desktop main: встроенный сервер и окно
+  ---
+  duration_ms: 413.840958
+  ...
+# Subtest: desktop main: окно настроек и IPC
+ok 7 - desktop main: окно настроек и IPC
+  ---
+  duration_ms: 13.295973
+  ...
+# Subtest: desktop main: сигнал «вызов на speaking» мигает значком, только от окна портала
+ok 8 - desktop main: сигнал «вызов на speaking» мигает значком, только от окна портала
+  ---
+  duration_ms: 0.517493
+  ...
+# Subtest: desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе
+ok 9 - desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе
+  ---
+  duration_ms: 300.753264
+  ...
+# Subtest: app/ совпадает с сайтом: нет следов патчей
+ok 10 - app/ совпадает с сайтом: нет следов патчей
+  ---
+  duration_ms: 2.703239
+  ...
+# Subtest: сервер из копии: вход, онлайн-экзамен, статус AI, данные рядом с копией
+ok 11 - сервер из копии: вход, онлайн-экзамен, статус AI, данные рядом с копией
+  ---
+  duration_ms: 301.133359
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 844.271485
