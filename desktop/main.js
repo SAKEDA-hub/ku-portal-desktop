@@ -361,7 +361,7 @@ function buildMenu() {
         { label: 'Телефон…', click: showPhoneHelp },
         { label: 'Открыть портал в браузере', click: () => targetUrl && shell.openExternal(targetUrl) },
         { type: 'separator' },
-        { label: 'Репозиторий на GitHub', click: () => shell.openExternal('https://github.com/SAKEDA-hub/ku-portal-desktop') },
+        { label: 'Скачать последнюю версию', click: () => shell.openExternal('https://github.com/SAKEDA-hub/ku-portal-project#readme') },
         { label: `Версия ${app.getVersion()}`, enabled: false },
       ],
     },
@@ -463,6 +463,13 @@ function setupIpc() {
   // экран ошибки / ожидания в главном окне
   ipcMain.on('app:openSettings', (e) => { if (fromMain(e)) openSettings(); });
   ipcMain.on('app:retry', (e) => { if (fromMain(e)) openTarget(); });
+  // вызов на speaking: мигает значок в панели задач (Windows/Linux) или прыгает в Dock (macOS), пока окно не откроют
+  ipcMain.on('app:attention', (e) => {
+    if (!fromMain(e) || mainWin.isFocused()) return;
+    mainWin.flashFrame(true);
+    mainWin.once('focus', () => { if (mainWin && !mainWin.isDestroyed()) mainWin.flashFrame(false); });
+    if (process.platform === 'darwin' && app.dock) app.dock.bounce('critical');
+  });
 }
 
 /* ------------------------------------ старт ------------------------------------ */

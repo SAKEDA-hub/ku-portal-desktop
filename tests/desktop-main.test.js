@@ -31,6 +31,7 @@ class FakeWin {
   loadURL(u) { this.webContents.loaded.push(u); return Promise.resolve(); }
   loadFile(f, o) { this.webContents.loaded.push('file://' + f + (o && o.search ? '?' + o.search : '')); return Promise.resolve(); }
   once() {} on() {} show() {} focus() {} maximize() {} setMenu() {}
+  isFocused() { return !!this.focused; } flashFrame(v) { this.flashed = v; }
   isDestroyed() { return this.destroyed; } isMinimized() { return false; } isMaximized() { return false; }
   getNormalBounds() { return { x: 0, y: 0, width: 1200, height: 800 }; }
   static getAllWindows() { return wins; }
@@ -124,6 +125,18 @@ test('desktop main: окно настроек и IPC', async () => {
   const s2 = await handlers['settings:save']({ sender: sw.webContents }, { ...got.cfg, port: 3999 });
   assert.deepStrictEqual(s2, { saved: true, restart: true });
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8')).port, 3999);
+});
+
+test('desktop main: сигнал «вызов на speaking» мигает значком, только от окна портала', () => {
+  const main = wins[0], sw = wins.find((w) => w.opts.title === 'Настройки KU Portal');
+  main.focused = false; main.flashed = undefined;
+  handlers['app:attention']({ sender: sw.webContents });
+  assert.strictEqual(main.flashed, undefined, 'другие окна не могут вызвать мигание');
+  handlers['app:attention']({ sender: main.webContents });
+  assert.strictEqual(main.flashed, true, 'окно не в фокусе — значок мигает');
+  main.focused = true; main.flashed = undefined;
+  handlers['app:attention']({ sender: main.webContents });
+  assert.strictEqual(main.flashed, undefined, 'окно в фокусе — не мигает');
 });
 
 test('desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе', async () => {
