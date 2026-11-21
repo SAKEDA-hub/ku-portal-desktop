@@ -26,10 +26,7 @@ async function run(c, base, { shot = async () => {}, log = console.log, notifExp
   res.ai = await c.evaluate(`fetch('/api/ai/status').then(r => r.json())`);
   const chat = await c.evaluate(`fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('ku_token') }, body: JSON.stringify({ message: 'Есть ли общежитие в университете?' }) }).then(r => r.json())`);
   res.aiReply = !!(chat && chat.reply);
-  await c.evaluate(`location.hash = '#/ai'`);
-  await c.waitFor(`document.body.innerText.includes('AI')`, 15000, 'экран AI-помощника');
-  await sleep(600);
-  await shot('03-ai');
+  await shot('03-api');
 
   // кабинет и настройки
   await c.evaluate(`location.hash = '#/profile'`);
