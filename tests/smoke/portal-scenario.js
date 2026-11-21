@@ -1,6 +1,6 @@
 /* Общий сценарий проверки портала внутри готовой программы (ПК или Android).
-   Использует настоящий код портала: loginWith(), маршруты, кнопку «Перейти к онлайн-экзамену»,
-   кнопку «KU Portal» в онлайн-экзамене. */
+   Использует настоящий код портала: loginWith(), прямой переход в онлайн-экзамен через SSO,
+   кнопку «KU Portal» для возврата. */
 'use strict';
 const { sleep } = require('./cdp');
 
@@ -35,19 +35,16 @@ async function run(c, base, { shot = async () => {}, log = console.log, notifExp
   await sleep(500);
   await shot('04-profile');
 
-  // переход в онлайн-экзамен и обратно
-  await c.evaluate(`location.hash = '#/exam'`);
-  await c.waitFor(`!!document.getElementById('oeGo')`, 15000, 'кнопка «Перейти к онлайн-экзамену»');
-  await sleep(500);
-  await shot('05-exam');
-  await c.evaluate(`document.getElementById('oeGo').click(), true`);
-  await c.waitFor(`location.pathname.startsWith('/exam-sync/') && document.readyState === 'complete'`, 30000, 'открылся онлайн-экзамен');
+  // прямой переход из навигации в онлайн-экзамен с автоматическим входом через SSO
+  await c.evaluate(`(() => { const link = document.querySelector('a[data-nav="exam"]'); if (!link) throw new Error('нет пункта меню «Экзамен»'); link.click(); return true; })()`);
+  await c.waitFor(`location.pathname.startsWith('/exam-sync/') && document.readyState === 'complete'`, 30000, 'открылся онлайн-экзамен напрямую');
+  await c.waitFor(`document.body.dataset.view !== 'login' && !!document.querySelector('button.me')`, 20000, 'автоматический вход в онлайн-экзамен через KU Portal');
   await sleep(1500);
   await shot('06-online-exam');
   res.exam = true;
   const back = await c.waitFor(`(() => { const el = [...document.querySelectorAll('a,button')].find(e => e.offsetParent && /KU Portal/.test(e.textContent)); return el ? (el.click(), true) : false; })()`, 15000, 'кнопка «KU Portal» в онлайн-экзамене');
   res.examBack = !!back;
-  await c.waitFor(`location.pathname === '/' && location.hash.startsWith('#/exam')`, 20000, 'возврат в портал');
+  await c.waitFor(`location.pathname === '/' && location.hash.startsWith('#/')`, 20000, 'возврат в портал');
   await sleep(800);
   await shot('07-back');
 
