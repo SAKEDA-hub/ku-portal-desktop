@@ -100,7 +100,7 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
   });
 
   await step('сохранение файла («Скачать мои данные» → системное окно «Сохранить»)', true, async () => {
-    await c.evaluate(`exportData(), true`);
+    await c.evaluate(`(() => { const link = document.querySelector('[data-act="export"]'); if (!link) throw new Error('нет кнопки «Скачать мои данные»'); link.scrollIntoView({ block: 'center' }); link.click(); return true; })()`);
     await sleep(4000);
     screen('save-dialog');
     const top = sh('adb shell dumpsys activity activities');
@@ -111,17 +111,13 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
     return true;
   });
 
-  await step('онлайн-экзамен после входа: верхняя панель не налезает (узкий экран)', true, async () => {
+  await step('онлайн-экзамен: прямой вход KU Portal и верхняя панель на узком экране', true, async () => {
     try { c.close(); } catch { /* */ }
     let x = await page(base, (t) => t.url.startsWith('http://10.0.2.2:3000'), 10000);
-    await x.evaluate(`location.href = '/exam-sync/?from=ku-portal&back=' + encodeURIComponent(location.origin + '/#/exam'), true`);
-    await sleep(2500);
+    await x.evaluate(`(() => { const link = document.querySelector('a[data-nav="exam"]'); if (!link) throw new Error('нет пункта меню «Экзамен»'); link.click(); return true; })()`);
     x.close();
     x = await page(base, (t) => t.url.startsWith('http://10.0.2.2:3000/exam-sync/'), 20000);
-    await x.waitFor(`document.querySelectorAll('#app input').length >= 2`, 20000, 'форма входа в онлайн-экзамен');
-    await x.evaluate(`(() => { const i = document.querySelectorAll('#app input'); const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
-      set(i[0], 'user'); set(i[1], '1'); const f = i[0].closest('form'); if (f) f.requestSubmit ? f.requestSubmit() : f.submit(); else i[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
-    await x.waitFor(`!!document.querySelector('.tb-in .avatar')`, 20000, 'вход в онлайн-экзамен (аватар в панели)');
+    await x.waitFor(`!!document.querySelector('.tb-in .avatar')`, 20000, 'автоматический вход в экзамен через KU Portal');
     await sleep(1500);
     screen('exam-topbar');
     const r = await x.evaluate(`(() => {
