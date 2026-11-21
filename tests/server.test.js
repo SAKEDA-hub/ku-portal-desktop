@@ -17,7 +17,7 @@ function start(dir, env) {
     const t = setTimeout(() => { p.kill(); reject(new Error('сервер не стартовал:\n' + out)); }, 15000);
     const on = (d) => {
       out += d;
-      const m = out.match(/KU Portal: http:\/\/localhost:(\d+)/);
+      const m = out.match(/KU Portal: http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
       if (m) { clearTimeout(t); resolve({ proc: p, port: Number(m[1]), log: () => out }); }
     };
     p.stdout.on('data', on); p.stderr.on('data', on);
@@ -33,22 +33,23 @@ test('app/ совпадает с сайтом: нет следов патчей'
 test('сервер из копии: вход, онлайн-экзамен, статус AI, данные рядом с копией', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kuportal-'));
   fs.cpSync(APP, dir, { recursive: true });
-  const dataDir = path.join(dir, 'data');
+  const dataDir = path.join(dir, 'data', 'demo');
   const s = await start(dir, { PORT: String(await freePort()), LM_STUDIO_URL: 'http://127.0.0.1:9', DEMO: '1' });
   t.after(() => s.proc.kill());
   const base = `http://127.0.0.1:${s.port}`;
 
   assert.match(s.log(), /Загружена локальная база KU: \d+ фрагментов/);
   assert.ok(fs.existsSync(path.join(dataDir, 'db.json')), 'db.json в копии');
-  assert.ok(!fs.existsSync(path.join(APP, 'data', 'db.json')), 'в app/ ничего не пишется');
+  assert.ok(!fs.existsSync(path.join(APP, 'data', 'demo', 'db.json')), 'в app/ ничего не пишется');
 
   const home = await fetch(base + '/');
   assert.strictEqual(home.status, 200);
   assert.match(await home.text(), /KU Portal/);
 
+  const demoCredentials = JSON.parse(fs.readFileSync(path.join(dataDir, 'demo-credentials.json'), 'utf8'));
   const login = await fetch(base + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'student@demo.kz', password: '1234' }),
+    body: JSON.stringify({ email: 'student@demo.kz', password: demoCredentials['student@demo.kz'] }),
   });
   const lj = await login.json();
   assert.ok(lj.token, 'токен входа');

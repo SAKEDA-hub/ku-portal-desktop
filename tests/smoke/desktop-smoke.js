@@ -19,7 +19,7 @@ const scenario = require('./portal-scenario');
 
 const exe = process.argv[2];
 const realIdx = process.argv.indexOf('--real');
-const REAL = realIdx > 0 ? process.argv[realIdx + 1] : null;
+const REAL = realIdx > 0 && process.env.KU_REAL_DEMO_PASSWORD ? process.argv[realIdx + 1] : null;
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'smoke-out');
 fs.mkdirSync(OUT, { recursive: true });
@@ -42,8 +42,13 @@ async function waitHttp(url, ms) {
 function startSite(port) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ku-site-'));
   fs.cpSync(path.join(ROOT, 'app'), dir, { recursive: true });
-  const p = spawn(process.execPath, ['server.js'], { cwd: dir, env: { ...process.env, PORT: String(port), LM_STUDIO_URL: 'http://127.0.0.1:9' }, stdio: 'ignore' });
-  return p;
+  const p = spawn(process.execPath, ['server.js'], { cwd: dir, env: { ...process.env, PORT: String(port), LM_STUDIO_URL: 'http://127.0.0.1:9', DEMO: '1' }, stdio: 'ignore' });
+  return { proc: p, dir };
+}
+
+function demoPassword(dir) {
+  const file = path.join(dir, 'data', 'demo', 'demo-credentials.json');
+  return JSON.parse(fs.readFileSync(file, 'utf8'))['student@demo.kz'];
 }
 
 function killTree(p) {
@@ -90,7 +95,7 @@ async function portalIn(app, name, site, opts = {}) {
   const t = await waitTarget(app.base, (x) => x.url.startsWith(new URL(site).origin), opts.wait || 60000);
   const c = await connect(t.webSocketDebuggerUrl);
   try {
-    return await scenario.run(c, site, { log, shot: (n) => c.screenshot(path.join(OUT, `${name}-${n}.png`)).catch(() => {}), notifExpect: 'granted' });
+    return await scenario.run(c, site, { log, shot: (n) => c.screenshot(path.join(OUT, `${name}-${n}.png`)).catch(() => {}), notifExpect: 'granted', demoPassword: opts.demoPassword });
   } catch (e) {
     await c.screenshot(path.join(OUT, `${name}-FAIL.png`)).catch(() => {});
     throw e;
@@ -106,16 +111,16 @@ async function portalIn(app, name, site, opts = {}) {
     try {
       await waitHttp(`http://127.0.0.1:${port}/`, 20000);
       const app = await launch('A-site', { mode: 'remote', remoteUrl: `http://127.0.0.1:${port}` });
-      try { return await portalIn(app, 'A-site', `http://127.0.0.1:${port}/`); } finally { await close(app); }
-    } finally { killTree(site); }
+      try { return await portalIn(app, 'A-site', `http://127.0.0.1:${port}/`, { demoPassword: demoPassword(site.dir) }); } finally { await close(app); }
+    } finally { killTree(site.proc); }
   });
 
   await step('B. встроенный сервер: портал запускается внутри программы', true, async () => {
     const port = await freePort();
     const app = await launch('B-local', { mode: 'local', port, lmUrl: 'http://127.0.0.1:9' });
     try {
-      const r = await portalIn(app, 'B-local', `http://127.0.0.1:${port}/`);
-      const db = path.join(app.ud, 'portal', 'data', 'db.json');
+      const r = await portalIn(app, 'B-local', `http://127.0.0.1:${port}/`, { demoPassword: demoPassword(path.join(app.ud, 'portal')) });
+      const db = path.join(app.ud, 'portal', 'data', 'demo', 'db.json');
       if (!fs.existsSync(db)) throw new Error('нет данных встроенного сервера: ' + db);
       return r;
     } finally {
@@ -144,7 +149,7 @@ async function portalIn(app, name, site, opts = {}) {
   if (REAL) {
     await step(`D. настоящий сайт ${REAL} (не блокирует сборку)`, false, async () => {
       const app = await launch('D-real', null); // настройки по умолчанию
-      try { return await portalIn(app, 'D-real', REAL, { wait: 150000 }); } finally { await close(app); }
+      try { return await portalIn(app, 'D-real', REAL, { wait: 150000, demoPassword: process.env.KU_REAL_DEMO_PASSWORD }); } finally { await close(app); }
     });
   }
 

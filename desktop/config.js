@@ -10,7 +10,7 @@ const DEFAULTS = Object.freeze({
   mode: 'remote',                        // 'remote' — сайт портала (те же аккаунты и данные); 'local' — встроенный сервер
   remoteUrl: 'https://ku-portal.alwaysdata.net',
   port: 3000,                            // порт встроенного сервера (если занят — берётся следующий свободный)
-  demo: true,                            // тестовые аккаунты (teacher@demo.kz / student@demo.kz, пароль 1234)
+  demo: true,                            // локальный демо-сервер со случайными паролями в закрытом файле
   lmUrl: 'http://localhost:1234',        // LM Studio (Gemma) — AI-помощник
   lmModel: 'google/gemma-4-e4b',
   lmKey: '',                             // хранится зашифрованным (lmKeyEnc), в памяти — открытым

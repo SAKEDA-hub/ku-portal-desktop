@@ -4,14 +4,15 @@
 'use strict';
 const { sleep } = require('./cdp');
 
-async function run(c, base, { shot = async () => {}, log = console.log, notifExpect = 'granted' } = {}) {
+async function run(c, base, { shot = async () => {}, log = console.log, notifExpect = 'granted', demoPassword } = {}) {
   const origin = new URL(base).origin;
   const res = {};
   await c.waitFor(`location.origin === ${JSON.stringify(origin)} && !!document.querySelector('#app') && document.querySelector('#app').children.length > 0`, 120000, 'портал открылся');
   await shot('01-open');
 
   // вход тестовым студентом (функция портала loginWith)
-  await c.evaluate(`(async () => { localStorage.removeItem('ku_token'); await loginWith('student@demo.kz', '1234'); return true; })()`);
+  if (!demoPassword) throw new Error('для сценария нужен пароль локального демо-аккаунта');
+  await c.evaluate(`(async () => { localStorage.removeItem('ku_token'); await loginWith('student@demo.kz', ${JSON.stringify(demoPassword)}); return true; })()`);
   await c.waitFor(`!!localStorage.getItem('ku_token') && document.body.innerText.includes('Иванов')`, 30000, 'вход и главная');
   res.login = true;
   await sleep(800);

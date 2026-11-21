@@ -73,9 +73,9 @@ test('desktop main: встроенный сервер и окно', async () => 
   const r = await fetch(url + 'api/ai/status');
   const j = await r.json();
   assert.strictEqual(j.online, false);
-  assert.ok(fs.existsSync(path.join(userData, 'portal', 'data', 'db.json')), 'данные в userData/portal/data');
+  assert.ok(fs.existsSync(path.join(userData, 'portal', 'data', 'demo', 'db.json')), 'демо-данные в userData/portal/data/demo');
   assert.ok(fs.existsSync(path.join(userData, 'portal', 'server.js')), 'копия сайта в userData/portal');
-  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'app', 'data', 'db.json')), 'app/ не меняется');
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'app', 'data', 'demo', 'db.json')), 'app/ не меняется');
 
   // ссылки: свой портал — новое окно, внешние — браузер
   const wc = main.webContents;
@@ -140,7 +140,7 @@ test('desktop main: сигнал «вызов на speaking» мигает зн�
 });
 
 test('desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе', async () => {
-  const db = path.join(userData, 'portal', 'data', 'db.json');
+  const db = path.join(userData, 'portal', 'data', 'demo', 'db.json');
   const before = fs.readFileSync(db, 'utf8');
   assert.ok(before.length > 10);
   events['before-quit']();

@@ -8,7 +8,7 @@ APK=mobile/android/app/build/outputs/apk/debug/app-debug.apk
 
 # копия сайта для эмулятора: из эмулятора компьютер виден как 10.0.2.2
 D=$(mktemp -d); cp -r app/. "$D"/
-( cd "$D" && PORT=3000 LM_STUDIO_URL=http://127.0.0.1:9 exec node server.js ) > "$OUT/site.log" 2>&1 < /dev/null &
+( cd "$D" && PORT=3000 LM_STUDIO_URL=http://127.0.0.1:9 DEMO=1 exec node server.js ) > "$OUT/site.log" 2>&1 < /dev/null &
 SITE=$!
 sleep 2
 
@@ -24,7 +24,7 @@ sleep 2
 sleep 8
 adb exec-out screencap -p > "$OUT/android-00-start.png" < /dev/null
 
-node tests/smoke/android-smoke.js < /dev/null 2>&1 | tee -a build.log
+KU_SMOKE_DATA_DIR="$D/data/demo" node tests/smoke/android-smoke.js < /dev/null 2>&1 | tee -a build.log
 RC=${PIPESTATUS[0]}
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1 < /dev/null || true

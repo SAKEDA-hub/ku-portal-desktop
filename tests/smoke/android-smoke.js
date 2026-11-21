@@ -13,7 +13,10 @@ const scenario = require('./portal-scenario');
 const OUT = path.join(__dirname, '..', '..', 'smoke-out');
 // Не отправляем демонстрационные учётные данные в рабочую базу по умолчанию.
 // Проверку реального сервера включают только для отдельного безопасного стенда.
-const REAL = process.env.KU_REAL_SITE || null;
+const REAL = process.env.KU_REAL_SITE && process.env.KU_REAL_DEMO_PASSWORD ? process.env.KU_REAL_SITE : null;
+const DEMO_PASSWORD = process.env.KU_SMOKE_DATA_DIR
+  ? JSON.parse(fs.readFileSync(path.join(process.env.KU_SMOKE_DATA_DIR, 'demo-credentials.json'), 'utf8'))['student@demo.kz']
+  : null;
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const report = [];
 const log = (...a) => { const s = a.join(' '); console.log(s); fs.appendFileSync(path.join(OUT, 'smoke.log'), s + '\n'); };
@@ -66,7 +69,7 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
   let c;
   await step('подключение к компьютеру 10.0.2.2:3000 и сценарий портала', true, async () => {
     c = await connectTo(base, 'pc', '10.0.2.2:3000', 'http://10.0.2.2:3000', 60000);
-    return scenario.run(c, 'http://10.0.2.2:3000/', { log, shot: async (n) => screen('pc-' + n), notifExpect: null });
+    return scenario.run(c, 'http://10.0.2.2:3000/', { log, shot: async (n) => screen('pc-' + n), notifExpect: null, demoPassword: DEMO_PASSWORD });
   });
 
   await step('мост приложения подключён (KUApp, Notification)', true, async () => {
@@ -143,7 +146,7 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
     cur.close();
     await sleep(1500);
     const real = await connectTo(base, 'site', null, new URL(REAL).origin, 150000);
-    try { return await scenario.run(real, REAL, { log, shot: async (n) => screen('real-' + n), notifExpect: null }); }
+    try { return await scenario.run(real, REAL, { log, shot: async (n) => screen('real-' + n), notifExpect: null, demoPassword: process.env.KU_REAL_DEMO_PASSWORD }); }
     finally { real.close(); }
   });
 
