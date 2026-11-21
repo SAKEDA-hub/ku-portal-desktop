@@ -2,6 +2,7 @@
 /* KU Portal — SPA без зависимостей */
 
 const app = document.getElementById('app');
+const API_BASE = window.KU_API_BASE || ''; // '' — API на том же адресе; на GitHub Pages — адрес сервера (public/config.js)
 const S = { token: localStorage.getItem('ku_token') || null, user: null };
 
 /* ------------------------------ Иконки ------------------------------ */
@@ -47,6 +48,14 @@ const I = {
   download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',
   trash: '<path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2c.1.8.7 1.3 1.5 1.3h6.2c.8 0 1.4-.5 1.5-1.3L17.5 7"/>',
   cap: '<path d="M2.5 9.5 12 5l9.5 4.5L12 14z"/><path d="M6.5 11.6v4.2c2.9 2.3 8.1 2.3 11 0v-4.2M21.5 9.5v5"/>',
+  clip: '<path d="M20 11.5 12.3 19.2a5 5 0 0 1-7.1-7.1l8.1-8.1a3.4 3.4 0 0 1 4.8 4.8l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3"/>',
+  pin: '<path d="M9 4h6l-1 6 3.5 3.5h-11L10 10z"/><path d="M12 13.5V20"/>',
+  kumsg: '<path d="M3.5 6.2a2.2 2.2 0 0 1 2.2-2.2h8.6a2.2 2.2 0 0 1 2.2 2.2v5.1a2.2 2.2 0 0 1-2.2 2.2H9.2L5.8 16.3v-2.8h-.1a2.2 2.2 0 0 1-2.2-2.2z"/><path d="M19.6 9.4h.2a2 2 0 0 1 2 2v4.6a2 2 0 0 1-2 2h-.3v2.6l-3.1-2.6h-4.3a2 2 0 0 1-1.9-1.4"/><path d="M7.2 8.6h5.6"/>',
+  chat: '<path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-4.5 3.5v-3.5h-1z"/><path d="M8.5 9.5h7M8.5 12.5h4.5"/>',
+  ball: '<circle cx="12" cy="12" r="8.5"/><path d="m12 7.6 3.6 2.6-1.4 4.2H9.8l-1.4-4.2z"/><path d="M12 3.5v4.1M15.6 10.2l4.1-1.1M14.2 14.4l2.4 3.5M9.8 14.4l-2.4 3.5M8.4 10.2 4.3 9.1"/>',
+  hoop: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5v17"/><path d="M6 6a8.5 8.5 0 0 1 0 12M18 6a8.5 8.5 0 0 0 0 12"/>',
+  heart: '<path d="M12 19.5s-7.5-4.4-7.5-10a4.2 4.2 0 0 1 7.5-2.6 4.2 4.2 0 0 1 7.5 2.6c0 5.6-7.5 10-7.5 10z"/>',
+  crown: '<path d="m4 8 4 4 4-6.5 4 6.5 4-4-1.6 10H5.6z"/><path d="M5.6 20h12.8"/>',
   cpu: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/>',
 };
 function svg(name, cls) {
@@ -72,7 +81,7 @@ async function api(path, o) {
   o = o || {};
   o.headers = Object.assign({ 'Content-Type': 'application/json' }, S.token ? { Authorization: 'Bearer ' + S.token } : {}, o.headers || {});
   if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
-  const r = await fetch('/api' + path, o);
+  const r = await fetch(API_BASE + '/api' + path, o);
   if (r.status === 401 && S.token) { S.token = null; localStorage.removeItem('ku_token'); S.user = null; route(); throw new Error(t('Сессия истекла')); }
   const j = await r.json().catch(() => ({ error: 'Ошибка сервера' }));
   if (!r.ok) throw new Error(tv(j.error || 'Ошибка сервера')); // ошибки сервера — на русском, переводим по словарю
@@ -89,6 +98,27 @@ const PROGRAMS = {
   arizona: { id: 'arizona', name: 'University of Arizona', short: 'University of Arizona · международная программа' /* t() при выводе */, icon: 'cap', palette: 'arizona', examTheme: 'intl' },
 };
 const programOf = (u) => PROGRAMS[(u && u.program) || 'ku'] || PROGRAMS.ku;
+/* Роль и служебные права (назначает администратор): руководство клубами ('*' — все), общежитие */
+const permsOf = (u) => (u && u.perms) || { clubs: [], dorm: false, results: false };
+const leadsClubs = (u) => permsOf(u).clubs.length > 0;
+function roleLabel(u) {
+  if (u.role === 'teacher') return t('Преподаватель');
+  if (u.role === 'student') return t('Студент');
+  const p = permsOf(u);
+  return t(p.clubs.includes('*') ? 'Менеджер' : p.clubs.length ? 'Руководитель клуба' : p.dorm ? 'Администрация общежития' : 'Сотрудник');
+}
+/* Служебные плитки на главной: клубы — руководителям, общежитие — администрации (студентам — всегда),
+   учебная база результатов — только преподавателям и администрации */
+const seesResults = (u) => u.role === 'teacher' || permsOf(u).results;
+function serviceTiles(u) {
+  const p = permsOf(u), out = [];
+  if (p.admin) out.push(['Администрирование', 'shield', '#/admin']);
+  if (seesResults(u)) out.push(['Учебная база', 'chart', '#/results']);
+  if (u.role === 'student' || p.clubs.length) out.push(['Клубы', 'ball', '#/clubs']);
+  if (u.role === 'student' || p.dorm) out.push(['Общежитие', 'building', '#/dorm']);
+  out.push(['Голосование', 'mic', '#/voting']); // опросы — всем (server/polls.js); «Сообщения» — в верхнем меню
+  return out;
+}
 const PALETTES = {
   ku: { name: 'Kozybayev', color: '#05a4ba' },
   arizona: { name: 'Arizona', color: '#0C234B' },
@@ -174,11 +204,17 @@ function fmtWhen(ts) {
    системное уведомление браузера (notifPush, нужно разрешение), фильтры по типам (notifGrades / notifSchedule / notifExam). */
 const NOTIF = { unread: 0, items: [], seen: null, timer: null, examOpen: null };
 const notifTypePref = { grade: 'notifGrades', schedule: 'notifSchedule', exam: 'notifExam' };
+const DORM_STATUS_TEXT = { new: 'Принята', work: 'В работе', done: 'Выполнена', rejected: 'Отклонена' };
 function notifText(n) {
   if (n.type === 'grade') return { title: t('Новая оценка'), body: `${tv(n.subject)} — ${n.score}` };
   if (n.type === 'schedule') return { title: t('Изменение в расписании'), body: `${tv(n.subject)} · ${weekdayName(n.day)} ${n.start}${n.room ? ' · ' + t('ауд.') + ' ' + n.room : ''}` };
   if (n.type === 'login') return { title: t('Новый вход в аккаунт'), body: [n.device, n.ip].filter(Boolean).join(' · ') };
   if (n.type === 'exam') return { title: t('Экзамен открыт'), body: n.title || '' };
+  if (n.type === 'msg') return { title: t('Новое сообщение'), body: [n.from, n.text].filter(Boolean).join(': ') };
+  if (n.type === 'material') return { title: t('Новый материал'), body: `${tv(n.subject)} — ${n.title}` };
+  if (n.type === 'task') return { title: t('Новое задание'), body: `${tv(n.subject)} — ${n.title}${n.due ? ' · ' + t('до {d}', { d: fmtDay(n.due) }) : ''}` };
+  if (n.type === 'club') return { title: t(n.accepted ? 'Заявка принята' : 'Заявка отклонена'), body: n.accepted ? t('Вы в клубе «{c}» — канал и чат открыты', { c: tv(n.club) }) : tv(n.club) };
+  if (n.type === 'dorm') return { title: t('Обращение в общежитие'), body: [t(DORM_STATUS_TEXT[n.status] || ''), n.category ? tv(n.category) : '', n.reply].filter(Boolean).join(' · ') };
   return { title: t('Уведомление'), body: '' };
 }
 let audioCtx = null;
@@ -224,10 +260,7 @@ async function pollInbox() {
 async function pollExams() {
   if (!S.user || !getPrefs().notifExam) return;
   try {
-    const r = await fetch(EXAM_SYNC_PATH + 'api/state', { cache: 'no-store' });
-    if (!r.ok) return;
-    const rooms = ((await r.json()).db || {}).rooms || [];
-    const open = rooms.filter((x) => x.open);
+    const { rooms: open } = await api('/exams/open');
     const key = 'ku_exam_open:' + S.user.id;
     let known = NOTIF.examOpen;
     if (!known) { try { known = new Set(JSON.parse(localStorage.getItem(key) || 'null') || open.map((x) => x.id)); } catch { known = new Set(open.map((x) => x.id)); } }
@@ -238,12 +271,13 @@ async function pollExams() {
 }
 function startNotif() {
   if (NOTIF.timer || !S.user) return;
-  pollInbox(); pollExams();
-  NOTIF.timer = setInterval(() => { pollInbox(); pollExams(); }, 30000);
+  pollInbox(); pollExams(); pollChatUnread();
+  NOTIF.timer = setInterval(() => { pollInbox(); pollExams(); pollChatUnread(); }, 30000);
 }
 function stopNotif() {
   if (NOTIF.timer) clearInterval(NOTIF.timer);
   Object.assign(NOTIF, { unread: 0, items: [], seen: null, timer: null, examOpen: null });
+  CHAT.unread = 0;
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.user) pollInbox(); });
 function openInbox() {
@@ -272,12 +306,14 @@ async function askNotifPermission() {
 }
 
 /* ------------------------------ Общие блоки ------------------------------ */
+/* Верхнее меню. KU Message и экзамен открываются напрямую через одноразовый SSO-вход. */
 function navHTML(active) {
-  const it = (href, key, icon, label) => `<a href="${href}" class="${active === key ? 'on' : ''}"><span class="ic">${svg(icon)}</span>${t(label)}</a>`;
+  const it = (href, key, icon, label) => `<a href="${href}" data-nav="${key}" class="${active === key ? 'on' : ''}"><span class="ic">${svg(icon)}</span>${t(label)}</a>`;
   return `<nav class="bnav">
     <span class="bnav-brand">${svg(programOf(S.user).icon)}<b>KU Portal</b></span>
     ${it('#/', 'home', 'home', 'Главная')}
-    ${it('#/exam', 'exam', 'clipboard', 'Экзамен')}
+    ${it('#/chats', 'message', 'kumsg', 'KU Message')}
+    ${S.user.role === 'staff' ? '' : it('#/exam', 'exam', 'clipboard', 'Экзамен')}
     ${it('#/profile', 'profile', 'user', 'Кабинет')}
   </nav>`;
 }
@@ -295,7 +331,7 @@ function headHTML() {
     </div>
   </div>
   <div class="uni">
-    <div class="mark brand-mark"><img src="/bird-idle.png" alt="" /></div>
+    <div class="mark brand-mark"><img src="bird-idle.png" alt="" /></div>
     <div class="uname">${esc(programOf(u).name)}</div>
   </div>`;
 }
@@ -303,152 +339,12 @@ function miniHead(title) {
   return `<a class="back" href="#/">${svg('back')} ${t('Назад')}</a><h1 class="ptitle">${esc(t(title))}</h1>`;
 }
 
-/* ============================ Аутентификация ============================ */
-let authTab = 'login', authRole = 'student', authProgram = 'ku';
-function viewAuth(msg) {
-  stopPoll();
-  app.innerHTML = `
-  <div class="auth">
-    <div class="logo">
-      <div class="mark brand-mark"><img src="/bird-idle.png" alt="" /></div>
-      <div>
-        <h1>KU Portal</h1>
-        <div class="sub">Kozybayev University</div>
-      </div>
-    </div>
-    <div class="seg2 txt auth-lang" role="radiogroup" aria-label="${t('Язык')}">${Object.entries(LANGS).map(([k, n]) => `<button role="radio" lang="${k}" aria-checked="${getLang() === k}" class="${getLang() === k ? 'on' : ''}" data-lang="${k}">${n}</button>`).join('')}</div>
-    <div class="tabs">
-      <button id="tabLogin" class="${authTab === 'login' ? 'on' : ''}">${t('Вход')}</button>
-      <button id="tabReg" class="${authTab === 'reg' ? 'on' : ''}">${t('Регистрация')}</button>
-    </div>
-    <div id="authform"></div>
-    <div class="err" id="autherr">${msg ? esc(msg) : ''}</div>
-    <div id="demoBox"></div>
-  </div>`;
-  renderAuthForm();
-  renderDemoBox();
-  app.querySelectorAll('[data-lang]').forEach((b) => (b.onclick = () => { setLang(b.dataset.lang); viewAuth(); }));
-  document.getElementById('tabLogin').onclick = () => { authTab = 'login'; viewAuth(); };
-  document.getElementById('tabReg').onclick = () => { authTab = 'reg'; viewAuth(); };
-}
-function renderAuthForm() {
-  const box = document.getElementById('authform');
-  if (authTab === 'login') {
-    box.innerHTML = `
-      <input class="inp" id="liEmail" type="email" placeholder="Email">
-      <input class="inp" id="liPass" type="password" placeholder="${t('Пароль')}">
-      <button class="btn pri" id="liBtn">${t('Войти')}</button>`;
-    document.getElementById('liBtn').onclick = doLogin;
-    document.getElementById('liPass').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
-  } else {
-    box.innerHTML = `
-      <input class="inp" id="rLast" placeholder="${t('Фамилия')}">
-      <input class="inp" id="rFirst" placeholder="${t('Имя')}">
-      <input class="inp" id="rMid" placeholder="${t('Отчество (необязательно)')}">
-      <input class="inp" id="rEmail" type="email" placeholder="Email">
-      <input class="inp" id="rPass" type="password" placeholder="${t('Пароль (мин. 4 символа)')}">
-      <label class="lbl">${t('Роль')}</label>
-      <div class="chips">
-        <button class="chip ${authRole === 'student' ? 'on' : ''}" id="chStud">${t('Студент')}</button>
-        <button class="chip ${authRole === 'teacher' ? 'on' : ''}" id="chTeach">${t('Преподаватель')}</button>
-      </div>
-      <label class="lbl">${t('Программа')}</label>
-      <div class="chips">
-        <button class="chip ${authProgram === 'ku' ? 'on' : ''}" id="chKU">Kozybayev University</button>
-        <button class="chip ${authProgram === 'arizona' ? 'on' : ''}" id="chAZ">University of Arizona</button>
-      </div>
-      <div id="grpWrap">${authRole === 'student' ? `<input class="inp" id="rGroup" placeholder="${t('Группа (например: ИСУ-26-2-а)')}"><label class="lbl">${t('Оценки и расписание появятся, когда преподаватель добавит их для вашей группы')}</label>` : ''}</div>
-      <button class="btn pri" id="rBtn">${t('Создать аккаунт')}</button>`;
-    document.getElementById('chStud').onclick = () => { authRole = 'student'; renderAuthForm(); };
-    document.getElementById('chTeach').onclick = () => { authRole = 'teacher'; renderAuthForm(); };
-    // Выбор программы — без перерисовки формы, чтобы не стереть введённые поля
-    const pickProgram = (pr) => {
-      authProgram = pr;
-      document.getElementById('chKU').classList.toggle('on', pr === 'ku');
-      document.getElementById('chAZ').classList.toggle('on', pr === 'arizona');
-    };
-    document.getElementById('chKU').onclick = () => pickProgram('ku');
-    document.getElementById('chAZ').onclick = () => pickProgram('arizona');
-    document.getElementById('rBtn').onclick = doRegister;
-  }
-}
-/* Блок быстрого входа в тестовые аккаунты (если сервер запущен с демо-данными) */
-let demoInfo = null;
-async function renderDemoBox() {
-  try { if (!demoInfo) demoInfo = await api('/demo'); } catch { return; }
-  const box = document.getElementById('demoBox');
-  if (!box || !demoInfo.enabled) return;
-  const te = demoInfo.accounts.find((a) => a.role === 'teacher');
-  const st = demoInfo.accounts.find((a) => a.role === 'student');
-  box.innerHTML = `
-    <div class="demo-box">
-      <b>${t('Тестовый вход')}</b>
-      <div class="tx">${esc(t('Пароль у всех демо-аккаунтов: {p}. Преподаватель — международная программа University of Arizona, студент — Kozybayev University.', { p: demoInfo.password }))}</div>
-      <div class="row2">
-        <button class="btn ghost" data-demo="${esc(te.email)}">${t('Преподаватель')}<small class="demo-pr">${esc(programOf(te).name)}</small></button>
-        <button class="btn ghost" data-demo="${esc(st.email)}">${t('Студент')}<small class="demo-pr">${esc(programOf(st).name)}</small></button>
-      </div>
-    </div>`;
-  box.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = async () => {
-    authErr('');
-    try { await loginWith(b.dataset.demo, demoInfo.password); } catch (e) { authErr(e.message); }
-  }));
-}
-function authErr(m) { const e = document.getElementById('autherr'); if (e) e.textContent = m; }
-/* Идентификатор устройства (для оповещения о входе с нового устройства) — случайный, хранится в браузере */
-function deviceId() {
-  try {
-    let d = localStorage.getItem('ku_device');
-    if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join(''); localStorage.setItem('ku_device', d); }
-    return d;
-  } catch { return ''; }
-}
-/* Вход: пароль → (если включена двухфакторная аутентификация) код из приложения-аутентификатора */
-async function loginWith(email, password, code) {
-  const d = await api('/auth/login', { method: 'POST', body: { email, password, code, deviceId: deviceId() } });
-  if (d.need2fa) return showCodeStep(email, password);
-  S.token = d.token; localStorage.setItem('ku_token', d.token); S.user = d.user; goHome();
-}
-function showCodeStep(email, password) {
-  const box = document.getElementById('authform');
-  if (!box) return;
-  authErr('');
-  box.innerHTML = `
-    <div class="tx code-hint">${t('Введите 6-значный код из приложения-аутентификатора')}</div>
-    <input class="inp" id="liCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
-    <button class="btn pri" id="liCodeBtn">${t('Подтвердить')}</button>
-    <button class="btn ghost" id="liCodeBack" style="margin-top:8px">${t('Назад')}</button>`;
-  const go = async () => { authErr(''); try { await loginWith(email, password, v('liCode')); } catch (e) { authErr(e.message); } };
-  document.getElementById('liCodeBtn').onclick = go;
-  document.getElementById('liCode').onkeydown = (e) => { if (e.key === 'Enter') go(); };
-  document.getElementById('liCodeBack').onclick = () => viewAuth();
-  document.getElementById('liCode').focus();
-}
-function goHome() { if (location.hash === '#/' || !location.hash) route(); else location.hash = '#/'; }
-async function doLogin() {
-  authErr('');
-  try { await loginWith(v('liEmail'), v('liPass')); } catch (e) { authErr(e.message); }
-}
-async function doRegister() {
-  authErr('');
-  try {
-    const d = await api('/auth/register', {
-      method: 'POST',
-      body: {
-        lastName: v('rLast'), firstName: v('rFirst'), middleName: v('rMid'),
-        email: v('rEmail'), password: v('rPass'), role: authRole, program: authProgram, group: authRole === 'student' ? v('rGroup') : '',
-        deviceId: deviceId(),
-      },
-    });
-    S.token = d.token; localStorage.setItem('ku_token', d.token); S.user = d.user; goHome();
-  } catch (e) { authErr(e.message); }
-}
-function v(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
-
 /* ============================ Главная (студент) ============================ */
+const KU_SITE_URL = 'https://stikech.github.io/ku-frontend/ku.edu.kz/ru/'; // новый сайт Kozybayev University
 async function viewHome() {
   stopPoll();
   if (S.user.role === 'teacher') return viewHomeT();
+  if (S.user.role === 'staff') return viewHomeS();
   app.innerHTML = `${headHTML()}<div id="pagebody" class="dash"><div class="load">${t('Загрузка…')}</div></div>${navHTML('home')}`;
   bindHead();
   try {
@@ -460,9 +356,7 @@ async function viewHome() {
     const srvs = [
       // «Экзамен» здесь не дублируем — он есть в главном меню
       ['Рейтинг', 'star', '#/rating'], ['Расписание', 'calendar', '#/schedule'], ['Успеваемость', 'book', '#/grades'],
-      ['Запись на зачёт', 'clipboard', '#/credit'], ['AI-помощник', 'msg', '#/ai'], ['Посещаемость', 'clock', '#/attendance'],
-      ['Общежитие', 'building', '#/dorm'], ['Голосование', 'mic', '#/voting'], ['Библиотека', 'chart', '#/library'],
-      // последние пять — демо-сервисы (public/services.js)
+      ...serviceTiles(S.user),
     ];
 
     document.getElementById('pagebody').innerHTML = `
@@ -490,7 +384,7 @@ async function viewHome() {
       <div class="srv-grid">
         ${srvs.map((s) => `<button class="srv" data-href="${s[2]}">${svg(s[1])}<span>${t(s[0])}</span></button>`).join('')}
       </div>
-      <a class="news" href="https://ku.edu.kz/ru/" target="_blank" rel="noopener">
+      <a class="news" href="${KU_SITE_URL}" target="_blank" rel="noopener">
         <div class="tg">${svg('tg')}</div>
         <div style="flex:1">
           <b>${t('Сайт Kozybayev University')}</b>
@@ -528,12 +422,12 @@ async function viewHomeT() {
     const d = await api('/teacher/subjects');
     const srvs = [
       // «Экзамен» — в главном меню и в карточке выше; «Мои предметы» вели туда же, что и «Оценки»
-      ['Добавить занятие', 'plus', '#/t/schedule'], ['Оценки', 'star', '#/t/grades'],
-      ['Расписание', 'calendar', '#/schedule'], ['AI-помощник', 'msg', '#/ai'],
+      ['Добавить занятие', 'plus', '#/t/schedule'], ['Оценки', 'star', '#/t/grades'], ['Расписание', 'calendar', '#/schedule'],
+      ...serviceTiles(S.user), // клубы и общежитие — только если администратор назначил; «Сообщения» — в верхнем меню
     ];
     document.getElementById('pagebody').innerHTML = `
       <div class="section-label">${t('Виджеты')}</div>
-      <div class="card scorecard">
+      <div class="card scorecard wide">
         <div>
           <div class="stud-fio">${esc(S.user.fio)}</div>
           <div class="stud-group">${t('Преподаватель')}</div>
@@ -544,13 +438,6 @@ async function viewHomeT() {
           <div class="tx">${t('предметов')}</div>
         </div>
       </div>
-      <a class="lesson" href="#/exam" style="display:block;color:inherit">
-        <div class="subj">${t('Онлайн-экзамен')}</div>
-        <div class="dt">${t('Тесты, writing, speaking и ведомость')}</div>
-        <hr class="rule">
-        <div class="row">${t('Создавайте тесты и открывайте комнаты экзамена для групп')}</div>
-        <div class="foot">${svg('info')} ${t('Раздел «Экзамен»')}</div>
-      </a>
       <div class="section-label">${t('Сервисы')}</div>
       <div class="srv-grid">
         ${srvs.map((s) => `<button class="srv" data-href="${s[2]}">${svg(s[1])}<span>${t(s[0])}</span></button>`).join('')}
@@ -559,6 +446,26 @@ async function viewHomeT() {
   } catch (e) {
     document.getElementById('pagebody').innerHTML = `<div class="load">${esc(e.message)}</div>`;
   }
+}
+
+/* ============================ Главная (сотрудник: менеджер, руководитель клуба) ============================ */
+function viewHomeS() {
+  const tiles = serviceTiles(S.user);
+  app.innerHTML = `${headHTML()}<div id="pagebody" class="dash">
+      <div class="section-label">${t('Виджеты')}</div>
+      <div class="card scorecard wide">
+        <div>
+          <div class="stud-fio">${esc(S.user.fio)}</div>
+          <div class="stud-group">${esc(roleLabel(S.user))}</div>
+          <span class="pill">${t('Кабинет сотрудника')}</span>
+        </div>
+      </div>
+      <div class="section-label">${t('Сервисы')}</div>
+      ${tiles.length ? `<div class="srv-grid">${tiles.map((s) => `<button class="srv" data-href="${s[2]}">${svg(s[1])}<span>${t(s[0])}</span></button>`).join('')}</div>`
+        : `<div class="card next-empty">${t('Администратор портала ещё не назначил вам обязанности. Когда назначит — здесь появятся клубы или общежитие.')}</div>`}
+    </div>${navHTML('home')}`;
+  bindHead();
+  document.querySelectorAll('.srv').forEach((b) => (b.onclick = () => { location.hash = b.dataset.href; }));
 }
 
 /* ============================ Расписание ============================ */
@@ -633,9 +540,9 @@ async function viewRating() {
  * встроенный в этот же сервер по адресу /exam-sync/ (exam-sync/handler.js).
  * Сайт экзаменов показывает кнопку «KU Portal» для возврата сюда (параметры from/back).
  */
-const EXAM_SYNC_PATH = '/exam-sync/';
-I.monitor = '<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/><path d="m9.2 10.4 1.9 1.9 3.8-3.9"/>';
+const EXAM_SYNC_PATH = API_BASE + '/exam-sync/'; // онлайн-экзамен живёт на сервере портала
 I.external = '<path d="M13.5 4.5h6v6"/><path d="M19.5 4.5 11 13"/><path d="M17.5 13.5v4.5a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5V8A1.5 1.5 0 0 1 6 6.5h4.5"/>';
+I.monitor = '<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/><path d="m9.2 10.4 1.9 1.9 3.8-3.9"/>';
 const EXAM_FEATURES = {
   student: [
     ['clipboard', 'Тесты онлайн', 'Grammar, vocabulary и другие тесты с таймером — прогресс сохраняется, если закрыть вкладку.'],
@@ -651,10 +558,11 @@ const EXAM_FEATURES = {
   ],
 };
 const EXAM_COLOR = { ku: 'incampus', arizona: 'intl' }; // палитра портала → цвет онлайн-экзамена
-function examLaunchUrl() {
+async function examLaunchUrl() {
+  const { code } = await api('/exam/handoff', { method: 'POST', body: {} });
   const u = new URL(EXAM_SYNC_PATH, location.origin);
   u.searchParams.set('from', 'ku-portal');
-  u.searchParams.set('back', location.origin + '/#/exam');
+  u.searchParams.set('back', serviceReturnUrl()); // возвращаем на страницу, откуда открыли сервис
   u.searchParams.set('lang', getLang()); // язык интерфейса — и в онлайн-экзамене
   // Оформление портала целиком: цвет (с учётом «Авто»), режим, размер текста, «меньше анимации».
   // Kozybayev → inCampus, Arizona → «Международный кампус», остальные палитры в экзамене называются так же.
@@ -663,30 +571,27 @@ function examLaunchUrl() {
   u.searchParams.set('mode', th.mode || 'light'); // всегда явно: иначе «Авто» в экзамене включит тёмный inCampus при светлом портале
   u.searchParams.set('fs', th.fs || 'md');
   u.searchParams.set('still', th.still ? '1' : '0');
+  u.hash = new URLSearchParams({ sso: code }).toString(); // фрагмент не отправляется серверу и не попадает в Referer
   return u.href;
 }
+async function launchExam(newTab = false) {
+  const popup = newTab ? window.open('about:blank', '_blank') : null;
+  try {
+    const href = await examLaunchUrl();
+    if (popup) { popup.opener = null; popup.location.href = href; }
+    else examTransition(href);
+  } catch (e) { if (popup) popup.close(); toast(e.message, true); }
+}
 function examTransition(href) {
-  const ov = document.createElement('div');
-  ov.className = 'oe-ov';
-  ov.setAttribute('role', 'status');
-  ov.setAttribute('aria-live', 'polite');
-  ov.innerHTML = `
-    <div class="oe-ov-in">
-      <div class="oe-bridge"><span class="oe-app ku">${svg(programOf(S.user).icon)}</span><span class="oe-track"><i></i></span><span class="oe-app ex">${svg('monitor')}</span></div>
-      <div class="oe-ov-t">${t('Открываем онлайн-экзамен…')}</div>
-      <div class="oe-ov-s">${t('Переходим в сервис экзаменов')}</div>
-    </div>`;
-  document.body.appendChild(ov);
-  requestAnimationFrame(() => ov.classList.add('on'));
-  const reduced = (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) || getPrefs().reduceMotion;
-  setTimeout(() => { location.href = href; }, reduced ? 50 : 900);
-  // Вернулись кнопкой «Назад» из bfcache — убрать оверлей
-  window.addEventListener('pageshow', function h(e) { if (e.persisted) { ov.remove(); window.removeEventListener('pageshow', h); } });
+  appTransition(href);
+}
+/* Переход сразу в отдельный сервис, без промежуточного экрана. */
+function appTransition(href) {
+  location.assign(href);
 }
 function viewExam() {
   stopPoll();
   const teacher = S.user.role === 'teacher';
-  const href = examLaunchUrl();
   app.innerHTML = `${miniHead('Экзамен')}<div id="pagebody">
     <div class="card oe-hero">
       <div class="oe-bridge sm" aria-hidden="true"><span class="oe-app ku">${svg(programOf(S.user).icon)}</span><span class="oe-track"><i></i></span><span class="oe-app ex">${svg('monitor')}</span></div>
@@ -696,8 +601,9 @@ function viewExam() {
         ? t('Отдельный сайт для проведения письменных экзаменов: тесты, writing, speaking и ведомость в одном месте.')
         : t('Отдельный сайт для сдачи экзамена онлайн: тесты, writing и запись на speaking в одном месте.')}</div>
       <div class="oe-status" id="oeStatus"><i></i><span>${t('Проверяем доступность сайта…')}</span></div>
-      <a class="btn pri oe-go" id="oeGo" href="${esc(href)}">${svg('monitor')}${t('Перейти к онлайн-экзамену')}</a>
-      <a class="btn ghost oe-new" href="${esc(href)}" target="_blank" rel="noopener">${svg('external')}${t('Открыть в новой вкладке')}</a>
+      <button class="btn pri oe-go" id="oeGo">${svg('monitor')}${t('Перейти к онлайн-экзамену')}</button>
+      <button class="btn ghost oe-new" id="oeNew">${svg('external')}${t('Открыть в новой вкладке')}</button>
+      <a class="btn ghost oe-new" href="/results/">${svg('chart')}${t('Открыть учебную базу результатов')}</a>
     </div>
     <div class="oe-feat">
       ${EXAM_FEATURES[teacher ? 'teacher' : 'student'].map(([ic, ti, d]) => `
@@ -705,501 +611,18 @@ function viewExam() {
     </div>
     <div class="card oe-note">
       <span class="oe-fic">${svg('info')}</span>
-      <div class="tx"><b>${t('Вход на сайте экзаменов отдельный.')}</b> ${t('Используйте логин и пароль, которые выдал преподаватель. Вернуться в портал можно кнопкой «KU Portal» в верхней панели сайта экзаменов.')}</div>
+      <div class="tx"><b>${t('Вход выполняется автоматически.')}</b> ${t('Онлайн-экзамен использует ваш аккаунт KU Portal. Отдельный пароль не нужен.')}</div>
     </div>
   </div>${navHTML('exam')}`;
 
   const st = document.getElementById('oeStatus');
   const setSt = (cls, text) => { if (!st.isConnected) return; st.className = 'oe-status ' + cls; st.querySelector('span').textContent = text; };
-  fetch(EXAM_SYNC_PATH + 'api/state', { method: 'HEAD', cache: 'no-store' })
+  fetch(EXAM_SYNC_PATH + 'api/info', { cache: 'no-store' })
     .then((r) => setSt(r.ok ? 'ok' : 'bad', r.ok ? t('Сайт доступен') : t('Сайт экзаменов временно недоступен')))
     .catch(() => setSt('bad', t('Не удалось связаться с сайтом экзаменов')));
 
-  document.getElementById('oeGo').addEventListener('click', (e) => {
-    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // открыть в новой вкладке — как обычно
-    e.preventDefault();
-    examTransition(href);
-  });
-}
-
-/* ============================ AI-помощник ============================ */
-const AI_INIT = [{ role: 'assistant', content: 'Здравствуйте! Я AI-помощник Kozybayev University 🎓\n\nСпрашивайте что-нибудь о вузе: поступление, специальности, общежитие, расписание и т.д. Информацию беру с официального сайта ku.edu.kz.', fixed: true }];
-/* Фиксированные ответы (приветствие, ответы сервера без модели) переводятся при выводе;
-   ответы модели приходят на языке вопроса и не трогаются. */
-function aiText(m) {
-  if (m.role === 'user') return m.content;
-  const pre = 'Нашёл на сайте ku.edu.kz:\n\n';
-  if (m.content.startsWith(pre)) return t('Нашёл на сайте ku.edu.kz:') + '\n\n' + m.content.slice(pre.length);
-  return tv(m.content);
-}
-let aiHistory = null;
-/* Быстрые вопросы — показываются, пока в чате только приветствие */
-const AI_SUGGEST = ['Как поступить в университет?', 'Какие есть специальности?', 'Есть ли общежитие?', 'Сколько стоит обучение?'];
-async function viewAI() {
-  stopPoll();
-  aiHistory = aiHistory ? AI_INIT.concat(aiHistory.slice(AI_INIT.length)) : AI_INIT.slice();
-  app.innerHTML = `
-    <div class="chatpage">
-      <div class="chathead">
-        <div class="bird-avatar"><img src="/bird-idle.png" alt="" /></div>
-        <div class="chathead-t">
-          <b>${t('AI-помощник')}</b>
-          <div class="st"><span class="dot" id="aidot"></span><span id="aist">${t('уточняю статус…')}</span></div>
-        </div>
-        <button class="chat-act" id="chatnew" type="button" title="${t('Новый чат')}">${svg('plus')}<span>${t('Новый чат')}</span></button>
-        <a class="chat-act" href="#/" title="${t('На главную')}">${svg('back')}<span>${t('На главную')}</span></a>
-      </div>
-      <div class="chatbody" id="chatbody"><div class="chatwrap" id="chatwrap"></div></div>
-      <div class="chatbar">
-        <input class="inp" id="chatinp" placeholder="${t('Задайте вопрос…')}" autocomplete="off">
-        <button class="sendbtn" id="chatsend" type="button" title="${t('Отправить')}">${svg('send')}<span>${t('Отправить')}</span></button>
-      </div>
-    </div>`;
-  paintChat();
-  const body = document.getElementById('chatbody');
-  body.scrollTop = body.scrollHeight;
-  const inp = document.getElementById('chatinp');
-  inp.onkeydown = (e) => { if (e.key === 'Enter') sendChat(); };
-  document.getElementById('chatsend').onclick = () => sendChat();
-  document.getElementById('chatnew').onclick = () => { aiHistory = AI_INIT.slice(); paintChat(); inp.focus(); };
-  if (matchMedia('(min-width: 1024px)').matches) inp.focus();
-  api('/ai/status').then((st) => {
-    const dot = document.getElementById('aidot'), stt = document.getElementById('aist');
-    if (!dot) return;
-    if (st.online) { dot.classList.add('on'); stt.textContent = t('Gemma подключена · база KU: {n} фрагментов', { n: st.ctx }); }
-    else stt.textContent = t('Gemma недоступна · проверьте соединение с LM Studio');
-  }).catch(() => { });
-}
-function paintChat() {
-  const w = document.getElementById('chatwrap');
-  if (!w) return;
-  w.innerHTML = aiHistory.map((m) => m.role === 'user'
-    ? `<div class="msg user">${esc(aiText(m))}</div>`
-    : `<div class="msgrow"><div class="ai-ava"><img src="/bird-idle.png" alt="" /></div><div class="msg bot">${esc(aiText(m))}${m.src ? `<div class="src">${esc(m.src)}</div>` : ''}</div></div>`
-  ).join('') + (aiHistory.length === AI_INIT.length
-    ? `<div class="ai-sugg">${AI_SUGGEST.map((q) => `<button class="ai-q" type="button" data-q="${esc(t(q))}">${esc(t(q))}</button>`).join('')}</div>`
-    : '');
-  w.querySelectorAll('.ai-q').forEach((b) => { b.onclick = () => sendChat(b.dataset.q); });
-}
-async function sendChat(preset) {
-  const inp = document.getElementById('chatinp');
-  if (!inp) return;
-  const t = (typeof preset === 'string' ? preset : inp.value).trim();
-  if (!t) return;
-  inp.value = '';
-  aiHistory.push({ role: 'user', content: t });
-  paintChat();
-  const w = document.getElementById('chatwrap');
-  w.insertAdjacentHTML('beforeend', `<div class="msgrow" id="typing"><div class="ai-ava"><img src="/bird-idle.png" alt="" /></div><div class="msg bot"><span class="typing"><i></i><i></i><i></i></span></div></div>`);
-  const body = document.getElementById('chatbody');
-  body.scrollTop = body.scrollHeight;
-  try {
-    const r = await api('/ai/chat', { method: 'POST', body: { message: t, history: aiHistory.slice(-9) } });
-    document.getElementById('typing') && document.getElementById('typing').remove();
-    aiHistory.push({ role: 'assistant', content: r.reply, src: r.src });
-  } catch (e) {
-    document.getElementById('typing') && document.getElementById('typing').remove();
-    aiHistory.push({ role: 'assistant', content: e.message });
-  }
-  paintChat();
-  body.scrollTop = body.scrollHeight;
-}
-
-/* --- преподаватель: расписание --- */
-async function viewTSchedule() {
-  stopPoll();
-  app.innerHTML = `${miniHead('Добавить занятие')}<div id="pagebody"><div class="load">${t('Загрузка…')}</div></div>${navHTML()}`;
-  try {
-    const subs = await api('/teacher/subjects');
-    const pb = document.getElementById('pagebody');
-    if (!subs.items.length) {
-      pb.innerHTML = `<div class="card next-empty">${t('У вас пока нет предметов.')}</div>`;
-      return;
-    }
-    pb.innerHTML = `
-      <div class="card">
-        <label class="lbl">${t('Предмет')}</label>
-        <select class="inp" id="scSubj">${subs.items.map((s) => `<option value="${s.id}">${esc(tv(s.name))}</option>`).join('')}</select>
-        <label class="lbl">${t('Тип занятия')}</label>
-        <select class="inp" id="scType">${['Лек.', 'Практ.', 'Лаб.'].map((x) => `<option value="${x}">${t(x)}</option>`).join('')}</select>
-        <label class="lbl">${t('Группа')}</label>
-        <input class="inp" id="scGroup" placeholder="${t('Например: ИСУ-26-2-а')}">
-        <label class="lbl">${t('День недели')}</label>
-        <select class="inp" id="scDay">${[0, 1, 2, 3, 4, 5].map((i) => `<option value="${i}">${esc(weekdayName(i))}</option>`).join('')}</select>
-        <div class="row2">
-          <div><label class="lbl">${t('Начало')}</label><input class="inp" id="scStart" type="time"></div>
-          <div><label class="lbl">${t('Конец')}</label><input class="inp" id="scEnd" type="time"></div>
-        </div>
-        <label class="lbl">${t('Аудитория')}</label>
-        <input class="inp" id="scRoom" placeholder="119 (1/1)">
-        <button class="btn pri" id="scBtn">${t('Добавить занятие')}</button>
-      </div>
-      <div class="ptitle" style="padding:2px 0 10px">${t('Мои занятия')}</div>
-      <div id="scList"></div>`;
-    document.getElementById('scBtn').onclick = async () => {
-      try {
-        await api('/teacher/schedule', {
-          method: 'POST',
-          body: { subjectId: v('scSubj'), type: v('scType'), group: v('scGroup'), day: Number(v('scDay')), startTime: v('scStart'), endTime: v('scEnd'), room: v('scRoom') },
-        });
-        toast(t('Занятие добавлено')); paintScList();
-      } catch (e) { toast(e.message, true); }
-    };
-    paintScList();
-  } catch (e) { document.getElementById('pagebody').innerHTML = `<div class="load">${esc(e.message)}</div>`; }
-}
-async function paintScList() {
-  const box = document.getElementById('scList');
-  if (!box) return;
-  const d = await api('/schedule').catch((e) => ({ items: [] }));
-  box.innerHTML = d.items.length ? d.items.map((r) => `
-    <div class="card" style="padding:14px"><div class="stud-fio" style="font-size:calc(16px * var(--fs))">${esc(tv(r.subject))} (${esc(tv(r.type))})</div>
-    <div class="stud-group">${esc(weekdayName(r.day))} · ${esc(r.start)}-${esc(r.end)} · ${esc(t('ауд. {r}', { r: r.room || '—' }))} · ${esc(r.group)}</div></div>`).join('')
-    : `<div class="card next-empty">${t('Занятий пока нет.')}</div>`;
-}
-
-/* --- преподаватель: оценки --- */
-async function viewTGrades() {
-  stopPoll();
-  app.innerHTML = `${miniHead('Выставить оценки')}<div id="pagebody"><div class="load">${t('Загрузка…')}</div></div>${navHTML()}`;
-  try {
-    const subs = await api('/teacher/subjects');
-    if (!subs.items.length) return (document.getElementById('pagebody').innerHTML = `<div class="card next-empty">${t('У вас пока нет предметов.')}</div>`);
-    document.getElementById('pagebody').innerHTML = `
-      <div class="card">
-        <label class="lbl">${t('Предмет')}</label>
-        <select class="inp" id="gSubj">${subs.items.map((s) => `<option value="${s.id}">${esc(tv(s.name))}</option>`).join('')}</select>
-        <label class="lbl">${t('Группа студентов')}</label>
-        <div class="row2">
-          <input class="inp" id="gGroup" placeholder="ИСУ-26-2-а" style="margin:0">
-          <button class="btn ghost" id="gFind" style="max-width:120px">${t('Найти')}</button>
-        </div>
-      </div>
-      <div id="gStuds"></div>`;
-    document.getElementById('gFind').onclick = findStudents;
-    findStudents();
-  } catch (e) { document.getElementById('pagebody').innerHTML = `<div class="load">${esc(e.message)}</div>`; }
-}
-async function findStudents() {
-  const g = v('gGroup');
-  const d = await api('/teacher/students' + (g ? '?group=' + encodeURIComponent(g) : ''));
-  const box = document.getElementById('gStuds');
-  box.innerHTML = `<div class="ptitle" style="padding:2px 0 10px">${t('Студенты ({n})', { n: d.items.length })}</div>` + (d.items.length
-    ? d.items.map((s) => `
-      <div class="card" style="padding:14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div><div style="font-size:calc(15.5px * var(--fs))">${esc(s.fio)}${s.online ? `<span class="online-dot" title="${t('В сети')}"></span>` : ''}</div><div class="tx">${esc(s.group)}</div></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input class="inp small" style="margin:0;width:84px" placeholder="0-100" data-sc="${s.id}">
-          <button class="badge" style="border:0;cursor:pointer;padding:9px 13px" data-put="${s.id}">${t('Выставить')}</button>
-        </div>
-      </div>`).join('')
-    : `<div class="card next-empty">${t('Студентов такой группы нет.')}</div>`);
-  box.querySelectorAll('[data-put]').forEach((b) => (b.onclick = async () => {
-    const sid = b.dataset.put;
-    const val = box.querySelector('[data-sc="' + sid + '"]').value;
-    try {
-      await api('/teacher/grades', { method: 'POST', body: { studentId: sid, subjectId: v('gSubj'), score: Number(val) } });
-      toast(t('Оценка выставлена')); b.textContent = '✓'; b.disabled = true;
-    } catch (e) { toast(e.message, true); }
-  }));
-}
-
-/* ============================ Личный кабинет = профиль + все настройки ============================ */
-/* Один экран: слева (на ноутбуке) карточка профиля и оглавление разделов, справа — разделы настроек.
-   На телефоне оглавление — прокручиваемая строка чипов над разделами.
-   Все разделы работают:
-   - «Оформление», «Язык» — в браузере (ku_prefs:<id>, ku_lang), тема передаётся и в онлайн-экзамен;
-   - «Уведомления» — в браузере: тост, звук, уведомления браузера, фильтры по типам (см. NOTIF);
-   - «Безопасность», «Конфиденциальность», «Аккаунт» — на сервере (/api/settings, /api/auth/password, /api/2fa/*,
-     /api/sessions*, /api/export, /api/account/delete). */
-const CAB_SECTIONS = [
-  ['appearance', 'palette', 'Оформление'],
-  ['language', 'globe', 'Язык и регион'],
-  ['notifications', 'bell', 'Уведомления'],
-  ['security', 'shield', 'Безопасность'],
-  ['privacy', 'eye', 'Конфиденциальность'],
-  ['account', 'user', 'Аккаунт'],
-];
-const SRV_KEYS = ['showInRating', 'showOnline', 'loginAlerts']; // хранятся на сервере
-let SRV = null; // { settings, twoFactor, passChangedAt, demo }
-function prefVal(key) {
-  if (SRV_KEYS.includes(key)) return !!(SRV && SRV.settings[key]);
-  if (key === 'notifPush') return !!getPrefs().notifPush && 'Notification' in window && Notification.permission === 'granted';
-  return !!getPrefs()[key];
-}
-function swRow(key, icon, title, sub, o) {
-  o = o || {};
-  const on = o.locked !== undefined ? o.locked : prefVal(key);
-  return `<div class="set-row"><span class="sr-ic">${svg(icon)}</span><div class="sr-t"><b>${t(title)}</b>${sub ? `<span class="tx">${o.raw ? sub : tv(sub)}</span>` : ''}</div>
-    <button class="sw ${on ? 'on' : ''}" role="switch" aria-checked="${on}" aria-label="${esc(t(title))}" data-sw="${key}" ${o.locked !== undefined ? 'disabled' : ''}><i></i></button></div>`;
-}
-function linkRow(icon, title, sub, act, cls) {
-  return `<button class="set-row link ${cls || ''}" data-act="${act}"><span class="sr-ic">${svg(icon)}</span><div class="sr-t"><b>${t(title)}</b>${sub ? `<span class="tx">${sub}</span>` : ''}</div><span class="chev">${svg('chev')}</span></button>`;
-}
-function segRow(key, icon, title, opts, cur) {
-  if (cur === undefined) cur = getPrefs()[key];
-  return `<div class="set-row wrap"><span class="sr-ic">${svg(icon)}</span><div class="sr-t"><b>${t(title)}</b></div>
-    <div class="seg2 txt" role="radiogroup" aria-label="${esc(t(title))}">${opts.map(([v, l]) => `<button role="radio" aria-checked="${cur === v}" class="${cur === v ? 'on' : ''}" data-seg="${key}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
-}
-function modePreview(m, cur) {
-  return `<button class="mode-card ${cur === m ? 'on' : ''}" data-mode="${m}" role="radio" aria-checked="${cur === m}">
-    <span class="mp mp-${m}"><i></i><i></i><i></i></span>
-    <span class="mc-l">${svg(m === 'light' ? 'sun' : m === 'dark' ? 'moon' : 'device')}${t(MODES[m])}</span></button>`;
-}
-function secHead(id, title) {
-  const ic = CAB_SECTIONS.find((s) => s[0] === id)[1];
-  return `<h2>${svg(ic)}${t(title)}</h2>`;
-}
-function permText() {
-  if (!('Notification' in window)) return t('Браузер не поддерживает уведомления');
-  if (Notification.permission === 'granted') return t('Разрешено в браузере · когда вкладка свёрнута');
-  if (Notification.permission === 'denied') return t('Запрещено в настройках браузера');
-  return t('Когда вкладка свёрнута · нужно разрешение браузера');
-}
-async function viewProfile(section) {
-  stopPoll();
-  try { SRV = await api('/settings'); } catch { if (!S.user) return; }
-  paintProfile(section);
-}
-function paintProfile(section) {
-  const u = S.user, p = getPrefs(), pr = programOf(u);
-  const autoName = t(PALETTES[pr.palette].name);
-  const srv = SRV || { settings: {}, twoFactor: false, passChangedAt: null, demo: false };
-  app.innerHTML = `
-    ${miniHead('Личный кабинет')}
-    <div id="pagebody" class="cab">
-      <aside class="cab-side">
-        <div class="card profcard">
-          <div class="avatar">${esc(u.firstName.charAt(0).toUpperCase())}</div>
-          <div class="pf-main">
-            <div class="pf-fio">${esc(u.fio)}</div>
-            <div class="pf-sub">${u.role === 'teacher' ? t('Преподаватель') : t('Студент')}${u.group ? ' · ' + esc(u.group) : ''}</div>
-            <div class="pf-sub pf-mail">${esc(u.email)}</div>
-            <span class="pill pf-uni">${svg(pr.icon)}${esc(pr.name)}</span>
-          </div>
-        </div>
-        <nav class="cab-nav" aria-label="${t('Разделы настроек')}">
-          ${CAB_SECTIONS.map(([id, ic, title]) => `<a href="#/profile/${id}" data-sec="${id}">${svg(ic)}<span>${t(title)}</span></a>`).join('')}
-        </nav>
-      </aside>
-      <div class="cab-main">
-        <section class="card set-sec" id="set-appearance">
-          ${secHead('appearance', 'Оформление')}
-          <div class="set-lbl">${t('Тема')}</div>
-          <div class="mode-cards" role="radiogroup" aria-label="${t('Тема')}">${['light', 'dark', 'system'].map((m) => modePreview(m, p.mode)).join('')}</div>
-          <div class="set-lbl">${t('Цвет сайта')}</div>
-          <div class="swatches" role="radiogroup" aria-label="${t('Цвет сайта')}">
-            <button class="swatch auto ${p.palette === 'auto' ? 'on' : ''}" data-pal="auto" role="radio" aria-checked="${p.palette === 'auto'}" title="${t('Авто')} · ${esc(autoName)}" style="--sw:${PALETTES[pr.palette].color}"><i></i><span>${t('Авто')}</span></button>
-            ${Object.entries(PALETTES).map(([id, x]) => `<button class="swatch ${p.palette === id ? 'on' : ''}" data-pal="${id}" role="radio" aria-checked="${p.palette === id}" title="${esc(t(x.name))}" style="--sw:${x.color}"><i></i><span>${esc(t(x.name))}</span></button>`).join('')}
-          </div>
-          <div class="tx set-note">${esc(t('«Авто» — цвет вашей программы ({p}). Тема, цвет, размер текста и «меньше анимации» применяются и в онлайн-экзамене.', { p: pr.name }))}</div>
-          ${segRow('fontSize', 'type', 'Размер текста', [['sm', t('Мелкий')], ['md', t('Обычный')], ['lg', t('Крупный')], ['xl', t('Очень крупный')]])}
-          ${swRow('compact', 'device', 'Компактный режим', 'Плотнее карточки и списки')}
-          ${swRow('reduceMotion', 'play', 'Меньше анимации', 'Отключить плавные переходы')}
-        </section>
-
-        <section class="card set-sec" id="set-language">
-          ${secHead('language', 'Язык и регион')}
-          ${segRow('lang', 'globe', 'Язык интерфейса', Object.entries(LANGS), getLang())}
-          <div class="set-row"><span class="sr-ic">${svg('clock')}</span><div class="sr-t"><b>${t('Часовой пояс')}</b><span class="tx">${t('Астана, Костанай (UTC+5)')}</span></div></div>
-          <div class="set-row"><span class="sr-ic">${svg('calendar')}</span><div class="sr-t"><b>${t('Начало недели')}</b><span class="tx">${esc(weekdayName(0))}</span></div></div>
-        </section>
-
-        <section class="card set-sec" id="set-notifications">
-          ${secHead('notifications', 'Уведомления')}
-          ${swRow('notifPush', 'bell', 'Уведомления браузера', esc(permText()), { raw: true })}
-          ${u.role === 'student' ? swRow('notifGrades', 'star', 'Новые оценки', 'Когда преподаватель выставит балл') : ''}
-          ${u.role === 'student' ? swRow('notifSchedule', 'calendar', 'Изменения в расписании', 'Новые занятия вашей группы') : ''}
-          ${swRow('notifExam', 'clipboard', 'Экзамены', 'Когда в онлайн-экзамене открывается комната')}
-          ${swRow('notifSound', 'speaker', 'Звук', 'Звуковой сигнал уведомлений')}
-          ${linkRow('bell', 'Проверить уведомление', esc(t('Показать тестовое уведомление')), 'testNotif')}
-          ${swRow('notifEmail', 'send', 'Email-рассылка', esc(t('Недоступно: на сервере не настроена отправка почты')), { locked: false, raw: true })}
-        </section>
-
-        <section class="card set-sec" id="set-security">
-          ${secHead('security', 'Безопасность')}
-          ${linkRow('lock', 'Сменить пароль', esc(srv.passChangedAt ? t('Последнее изменение: {d}', { d: fmtWhen(srv.passChangedAt) }) : t('Последнее изменение: при регистрации')), 'password')}
-          ${linkRow('shield', 'Двухфакторная аутентификация', esc(srv.twoFactor ? t('Включена · код из приложения при входе') : t('Выключена · код из приложения при входе')), 'twofa')}
-          ${swRow('loginAlerts', 'bell', 'Оповещать о новом входе', 'Уведомление в портале при входе с нового устройства')}
-          ${linkRow('device', 'Активные сеансы', esc(t('Устройства, где выполнен вход')), 'sessions')}
-        </section>
-
-        <section class="card set-sec" id="set-privacy">
-          ${secHead('privacy', 'Конфиденциальность')}
-          ${u.role === 'student' ? swRow('showInRating', 'chart', 'Показывать меня в рейтинге группы', 'Если выключить — одногруппники увидят строку без имени') : ''}
-          ${swRow('showOnline', 'users', 'Статус «в сети»', u.role === 'student' ? 'Видно преподавателям и группе' : 'Видно в списках портала')}
-          ${linkRow('download', 'Скачать мои данные', esc(t('Оценки, расписание, профиль')) + ' · JSON', 'export')}
-        </section>
-
-        <section class="card set-sec" id="set-account">
-          ${secHead('account', 'Аккаунт')}
-          ${linkRow('info', 'О приложении', 'KU Portal v1.3', 'about')}
-          ${linkRow('trash', 'Удалить аккаунт', esc(srv.demo ? t('Тестовый аккаунт удалить нельзя') : t('Безвозвратно, с подтверждением паролем')), 'delete', 'danger')}
-          <button class="btn danger-ghost cab-out" id="outBtn">${t('Выйти из аккаунта')}</button>
-        </section>
-      </div>
-    </div>
-    ${navHTML('profile')}`;
-
-  const pb = document.getElementById('pagebody');
-  const rerender = () => { const y = window.scrollY; paintProfile(); window.scrollTo(0, y); };
-  pb.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { setPref('mode', b.dataset.mode); rerender(); }));
-  pb.querySelectorAll('[data-pal]').forEach((b) => (b.onclick = () => { setPref('palette', b.dataset.pal); rerender(); }));
-  pb.querySelectorAll('[data-seg]').forEach((b) => (b.onclick = () => {
-    if (b.dataset.seg === 'lang') setLang(b.dataset.v); // язык — настройка устройства (i18n.js)
-    else setPref(b.dataset.seg, b.dataset.v);
-    rerender();
-  }));
-  pb.querySelectorAll('[data-sw]').forEach((b) => (b.onclick = async () => {
-    if (b.disabled) return;
-    const key = b.dataset.sw, on = !b.classList.contains('on');
-    const paint = (v) => { b.classList.toggle('on', v); b.setAttribute('aria-checked', String(v)); };
-    if (key === 'notifPush' && on && !(await askNotifPermission())) { rerender(); return; }
-    paint(on);
-    if (SRV_KEYS.includes(key)) {
-      try { SRV.settings = (await api('/settings', { method: 'POST', body: { [key]: on } })).settings; }
-      catch (e) { paint(!on); toast(e.message, true); }
-    } else {
-      setPref(key, on);
-      if (key === 'notifPush') rerender();
-      if (key === 'notifExam' && on) { NOTIF.examOpen = null; pollExams(); }
-    }
-  }));
-  pb.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => {
-    const a = b.dataset.act;
-    if (a === 'about') toast('KU Portal v1.3 · ' + pr.name);
-    else if (a === 'testNotif') testNotif();
-    else if (a === 'password') changePasswordDlg(rerender);
-    else if (a === 'twofa') twoFactorDlg(rerender);
-    else if (a === 'sessions') sessionsDlg();
-    else if (a === 'export') exportData();
-    else if (a === 'delete') deleteAccountDlg();
-  }));
-  // оглавление: плавный переход к разделу без перерисовки страницы
-  pb.querySelectorAll('[data-sec]').forEach((a) => (a.onclick = (e) => {
-    e.preventDefault();
-    const el = document.getElementById('set-' + a.dataset.sec);
-    if (el) el.scrollIntoView({ block: 'start', behavior: getPrefs().reduceMotion ? 'auto' : 'smooth' });
-    history.replaceState(null, '', '#/profile/' + a.dataset.sec);
-    markSec(a.dataset.sec);
-  }));
-  const markSec = (id) => pb.querySelectorAll('[data-sec]').forEach((a) => a.classList.toggle('on', a.dataset.sec === id));
-  markSec(section || 'appearance');
-  document.getElementById('outBtn').onclick = logout;
-  if (section) { const el = document.getElementById('set-' + section); if (el) requestAnimationFrame(() => el.scrollIntoView({ block: 'start' })); }
-}
-
-/* ---------- Диалоги раздела «Безопасность» / «Конфиденциальность» / «Аккаунт» ---------- */
-const formErr = (box, m) => { const e = box.querySelector('.err'); if (e) e.textContent = m || ''; };
-function changePasswordDlg(done) {
-  modal(t('Сменить пароль'), `
-    <input class="inp" id="pwCur" type="password" autocomplete="current-password" placeholder="${t('Текущий пароль')}">
-    <input class="inp" id="pwNew" type="password" autocomplete="new-password" placeholder="${t('Новый пароль (мин. 4 символа)')}">
-    <input class="inp" id="pwNew2" type="password" autocomplete="new-password" placeholder="${t('Повторите новый пароль')}">
-    <div class="tx">${t('После смены пароля вход на других устройствах будет завершён.')}</div>
-    <div class="err"></div>
-    <button class="btn pri" id="pwSave">${t('Сохранить')}</button>`, (box, close) => {
-    box.querySelector('#pwSave').onclick = async () => {
-      const cur = box.querySelector('#pwCur').value, nx = box.querySelector('#pwNew').value;
-      if (nx !== box.querySelector('#pwNew2').value) return formErr(box, t('Пароли не совпадают'));
-      try {
-        const d = await api('/auth/password', { method: 'POST', body: { current: cur, next: nx } });
-        if (SRV) SRV.passChangedAt = d.passChangedAt;
-        close(); toast(t('Пароль изменён')); done && done();
-      } catch (e) { formErr(box, e.message); }
-    };
-  });
-}
-function twoFactorDlg(done) {
-  if (SRV && SRV.twoFactor) {
-    return modal(t('Двухфакторная аутентификация'), `
-      <div class="tx">${t('Чтобы выключить, введите пароль от аккаунта.')}</div>
-      <input class="inp" id="tfPass" type="password" autocomplete="current-password" placeholder="${t('Пароль')}">
-      <div class="err"></div>
-      <button class="btn danger-ghost" id="tfOff">${t('Выключить')}</button>`, (box, close) => {
-      box.querySelector('#tfOff').onclick = async () => {
-        try { await api('/2fa/disable', { method: 'POST', body: { password: box.querySelector('#tfPass').value } }); SRV.twoFactor = false; close(); toast(t('Двухфакторная аутентификация выключена')); done && done(); }
-        catch (e) { formErr(box, e.message); }
-      };
-    });
-  }
-  modal(t('Двухфакторная аутентификация'), `<div class="load">${t('Загрузка…')}</div>`, async (box, close) => {
-    try {
-      const d = await api('/2fa/setup', { method: 'POST', body: {} });
-      box.innerHTML = `
-        <ol class="tf-steps">
-          <li>${t('Установите приложение-аутентификатор: Google Authenticator, Microsoft Authenticator, Aegis и т.п.')}</li>
-          <li>${t('Добавьте аккаунт по ключу (ввести вручную) или откройте ссылку на телефоне:')}
-            <div class="tf-key" id="tfKey">${esc(d.secret.replace(/(.{4})/g, '$1 ').trim())}</div>
-            <div class="row2"><button class="btn ghost" id="tfCopy">${t('Скопировать ключ')}</button><a class="btn ghost" href="${esc(d.uri)}">${t('Открыть в приложении')}</a></div></li>
-          <li>${t('Введите 6-значный код из приложения:')}</li>
-        </ol>
-        <input class="inp" id="tfCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
-        <div class="err"></div>
-        <button class="btn pri" id="tfOn">${t('Включить')}</button>`;
-      box.querySelector('#tfCopy').onclick = () => { try { navigator.clipboard.writeText(d.secret); toast(t('Ключ скопирован')); } catch { } };
-      const on = async () => {
-        try { await api('/2fa/enable', { method: 'POST', body: { code: box.querySelector('#tfCode').value } }); SRV.twoFactor = true; close(); toast(t('Двухфакторная аутентификация включена')); done && done(); }
-        catch (e) { formErr(box, e.message); }
-      };
-      box.querySelector('#tfOn').onclick = on;
-      box.querySelector('#tfCode').onkeydown = (e) => { if (e.key === 'Enter') on(); };
-    } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
-  });
-}
-function sessionsDlg() {
-  modal(t('Активные сеансы'), `<div class="load">${t('Загрузка…')}</div>`, async function paint(box) {
-    try {
-      const d = await api('/sessions');
-      const others = d.items.filter((x) => !x.current).length + (d.legacy || 0);
-      box.innerHTML = `<div class="sess">${d.items.map((x) => `
-        <div class="sess-it">
-          <span class="sr-ic">${svg('device')}</span>
-          <div class="sr-t"><b>${esc(x.device || t('Неизвестное устройство'))}${x.current ? ` <span class="pill">${t('Это устройство')}</span>` : ''}</b>
-            <span class="tx">${esc([x.ip, t('активность: {d}', { d: fmtWhen(x.lastSeen) })].filter(Boolean).join(' · '))}</span></div>
-          ${x.current ? '' : `<button class="btn ghost sm" data-rv="${esc(x.sid)}">${t('Завершить')}</button>`}
-        </div>`).join('')}</div>
-        ${d.legacy ? `<div class="tx">${t('Ещё сеансов без сведений об устройстве: {n}', { n: d.legacy })}</div>` : ''}
-        ${others ? `<button class="btn danger-ghost" id="rvAll" style="margin-top:10px">${t('Завершить все другие сеансы')}</button>` : `<div class="tx" style="margin-top:8px">${t('Других активных сеансов нет.')}</div>`}`;
-      box.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = async () => { try { await api('/sessions/revoke', { method: 'POST', body: { sid: b.dataset.rv } }); toast(t('Сеанс завершён')); paint(box); } catch (e) { toast(e.message, true); } }));
-      const all = box.querySelector('#rvAll');
-      if (all) all.onclick = async () => { try { const r = await api('/sessions/revoke', { method: 'POST', body: { all: true } }); toast(t('Завершено сеансов: {n}', { n: r.revoked })); paint(box); } catch (e) { toast(e.message, true); } };
-    } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
-  });
-}
-async function exportData() {
-  try {
-    const r = await fetch('/api/export', { headers: { Authorization: 'Bearer ' + S.token } });
-    if (!r.ok) throw new Error(t('Не удалось скачать данные'));
-    const blob = await r.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = `ku-portal-${S.user.id}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast(t('Файл с данными скачан'));
-  } catch (e) { toast(e.message, true); }
-}
-function deleteAccountDlg() {
-  if (SRV && SRV.demo) return toast(t('Тестовый аккаунт удалить нельзя'), true);
-  modal(t('Удалить аккаунт'), `
-    <div class="tx">${t('Аккаунт, оценки и настройки будут удалены безвозвратно. Для подтверждения введите пароль.')}</div>
-    <input class="inp" id="delPass" type="password" autocomplete="current-password" placeholder="${t('Пароль')}">
-    <div class="err"></div>
-    <button class="btn danger-ghost" id="delGo">${t('Удалить навсегда')}</button>`, (box, close) => {
-    box.querySelector('#delGo').onclick = async () => {
-      try {
-        await api('/account/delete', { method: 'POST', body: { password: box.querySelector('#delPass').value } });
-        close();
-        try { localStorage.removeItem(prefsKey()); localStorage.removeItem('ku_theme'); } catch { }
-        localStorage.removeItem('ku_token'); S.token = null; S.user = null; SRV = null; stopNotif();
-        toast(t('Аккаунт удалён')); goHome();
-      } catch (e) { formErr(box, e.message); }
-    };
-  });
-}
-async function logout() {
-  try { await api('/auth/logout', { method: 'POST', body: {} }); } catch { }
-  localStorage.removeItem('ku_token'); S.token = null; S.user = null; aiHistory = null; stopNotif(); goHome();
+  document.getElementById('oeGo').onclick = () => launchExam(false);
+  document.getElementById('oeNew').onclick = () => launchExam(true);
 }
 
 /* ============================ Заглушки ============================ */
@@ -1211,37 +634,69 @@ function viewStub(name) {
 }
 
 /* ============================ Роутер ============================ */
+let askedNewPassword = false;
 function route() {
   stopPoll();
   applyTheme(); // цвета пользователя; до входа и после выхода — KU
-  if (!S.user) { stopNotif(); return viewAuth(); }
+  const resetMatch = /^#\/reset\/([0-9a-f]{48})$/.exec(location.hash); // ссылка из письма восстановления (public/auth.js)
+  if (resetMatch && !S.user) { stopNotif(); return viewReset(resetMatch[1]); }
+  if (!S.user) { stopNotif(); return location.hash === '#/forgot' ? viewForgot() : viewAuth(); }
   startNotif();
   const h = location.hash.replace(/^#\/?/, '');
   const parts = h.split('/').filter(Boolean);
+  // пароль сброшен администратором — сначала свой пароль вместо временного
+  // сервер до смены пароля отвечает только кабинету (MUST_CHANGE_ALLOWED в server.js)
+  if (S.user.mustChangePassword) {
+    if (!askedNewPassword) {
+      askedNewPassword = true;
+      setTimeout(() => { toast(t('Пароль выдан администратором — задайте свой')); changePasswordDlg(() => route()); }, 300);
+    }
+    return viewProfile('security');
+  }
   switch (parts[0]) {
     case undefined: return viewHome();
-    case 'schedule': return viewSchedule();
-    case 'grades': return S.user.role === 'teacher' ? viewTGrades() : viewGrades();
-    case 'rating': return viewRating();
-    case 'exam': return viewExam(); // старые адреса #/exam/... (комнаты очереди) тоже ведут сюда
-    case 'ai': return viewAI();
+    case 'schedule': return S.user.role === 'staff' ? viewHome() : viewSchedule();
+    case 'grades': return S.user.role === 'teacher' ? viewTGrades() : S.user.role === 'student' ? viewGrades() : viewHome();
+    case 'rating': return S.user.role === 'student' ? viewRating() : viewHome();
+    case 'exam': return S.user.role === 'staff' ? viewHome() : launchExam(false); // старые #/exam/... тоже открывают сервис
+    case 'chats': case 'chat': return openMessage(false); // одноразовый SSO-вход в отдельное приложение KU Message
+    case 'clubs': // клубы — студентам и руководителям клубов
+      if (S.user.role !== 'student' && !leadsClubs(S.user)) return viewHome();
+      return viewClubs(parts[1] ? decodeURIComponent(parts[1]) : '');
     case 't':
       if (S.user.role !== 'teacher') return viewHome();
       if (parts[1] === 'schedule') return viewTSchedule();
       if (parts[1] === 'grades') return viewTGrades();
-      return viewExam(); // #/t/queue, #/t/room/... — бывшая очередь
+      return viewHome(); // #/t/queue, #/t/room/... — бывшая очередь
     case 'profile': return viewProfile(parts[1]);
     case 'settings': return viewProfile(parts[1]); // старые адреса настроек — теперь это личный кабинет
-    // демо-сервисы студента (public/services.js)
-    case 'credit': return viewCredit();
-    case 'attendance': return viewAttendance();
-    case 'dorm': return viewDorm();
-    case 'voting': return viewVoting();
-    case 'library': return viewLibrary();
+    case 'admin': // админ-панель — отдельная страница (admin/), вход по сеансу портала
+      if (!permsOf(S.user).admin) return viewHome();
+      location.href = '/admin/'; return;
+    case 'results': // учебная база — отдельная страница, вход в неё по сеансу портала
+      if (!seesResults(S.user)) return viewHome();
+      location.href = '/results/'; return;
+    case 'dorm': return S.user.role === 'student' || permsOf(S.user).dorm ? viewDorm() : viewHome(); // public/campus.js
+    case 'voting': return viewVoting(); // опросы (public/services.js, server/polls.js)
     case 'stub': return viewStub(parts[1] ? decodeURIComponent(parts.slice(1).join('/')) : '');
     default: return viewHome();
   }
 }
+function serviceReturnUrl() {
+  const route = location.hash.replace(/^#\/?/, '').split('/')[0];
+  const fallback = ['chats', 'chat', 'exam'].includes(route) ? '#/' : (location.hash || '#/');
+  return location.origin + location.pathname + location.search + fallback;
+}
+// Обычный щелчок по пунктам меню запускает SSO, не меняя hash и не оставляя в истории
+// промежуточный маршрут #/chats или #/exam. Ctrl/Meta-клик сохраняет обычное открытие вкладки.
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-nav="message"], a[data-nav="exam"]');
+  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (!S.user || S.user.mustChangePassword) return;
+  event.preventDefault();
+  if (link.dataset.nav === 'message') openMessage(false);
+  else launchExam(false);
+});
 window.addEventListener('hashchange', route);
 (async function init() {
   if (S.token) {

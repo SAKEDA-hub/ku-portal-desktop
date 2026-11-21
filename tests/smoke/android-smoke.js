@@ -11,7 +11,9 @@ const { sleep, waitTarget, connect } = require('./cdp');
 const scenario = require('./portal-scenario');
 
 const OUT = path.join(__dirname, '..', '..', 'smoke-out');
-const REAL = process.env.KU_REAL_SITE || 'https://ku-portal.onrender.com';
+// Не отправляем демонстрационные учётные данные в рабочую базу по умолчанию.
+// Проверку реального сервера включают только для отдельного безопасного стенда.
+const REAL = process.env.KU_REAL_SITE || null;
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const report = [];
 const log = (...a) => { const s = a.join(' '); console.log(s); fs.appendFileSync(path.join(OUT, 'smoke.log'), s + '\n'); };
@@ -134,7 +136,7 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
     return r;
   });
 
-  await step(`настоящий сайт ${REAL} (не блокирует сборку)`, false, async () => {
+  if (REAL) await step(`тестовый сайт ${REAL} (не блокирует сборку)`, false, async () => {
     // «Сменить сервер» из портала → экран подключения → «Сайт портала»
     const cur = await page(base, (x) => x.url.startsWith('http://10.0.2.2:3000'), 10000);
     await cur.evaluate(`KUApp.openConnect(), true`);

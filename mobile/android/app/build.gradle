@@ -14,7 +14,7 @@ android {
         versionCode((System.getenv('KU_VERSION_CODE') ?: '1') as int)
         versionName(System.getenv('KU_VERSION_NAME') ?: '1.0.0')
         // Сервер по умолчанию (экран «Подключение»)
-        buildConfigField 'String', 'DEFAULT_SERVER', '"https://ku-portal.onrender.com"'
+        buildConfigField 'String', 'DEFAULT_SERVER', '"https://ku-portal.alwaysdata.net"'
     }
 
     buildFeatures {

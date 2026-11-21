@@ -43,7 +43,7 @@ import java.nio.charset.StandardCharsets;
  * KU Portal для телефона.
  *
  * Приложение открывает тот же портал, что и сайт (сервер с API, AI-помощником и онлайн-экзаменом):
- *  - сайт университета (по умолчанию https://ku-portal.onrender.com) или
+ *  - сайт университета (по умолчанию https://ku-portal.alwaysdata.net) или
  *  - компьютер с KU Portal Desktop в той же сети Wi-Fi (http://192.168.x.x:3000).
  * Поэтому записи, оценки, расписание, AI-помощник, переход в онлайн-экзамен и все настройки
  * работают так же, как на сайте. Чего нет у WebView «из коробки», добавляет мост (assets/bridge.js):
@@ -83,6 +83,13 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         server = prefs.getString(KEY_SERVER, null);
+        boolean serverMigrated = server != null && originOf(server).equals(originOf("https://ku-portal.onrender.com"));
+        // Обновить сохранённый адрес предыдущей версии, чтобы установленное приложение
+        // продолжило работать с общей базой нового сайта, а не с устаревшей копией Render.
+        if (serverMigrated) {
+            server = BuildConfig.DEFAULT_SERVER;
+            prefs.edit().putString(KEY_SERVER, server).apply();
+        }
         createNotificationChannel();
 
         // отладка WebView (Chrome DevTools) — только в отладочной сборке, для автопроверок
@@ -115,10 +122,10 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
-        if (savedInstanceState != null) {
+        if (savedInstanceState != null && !serverMigrated) {
             web.restoreState(savedInstanceState);
         }
-        if (savedInstanceState == null || web.getUrl() == null) {
+        if (savedInstanceState == null || web.getUrl() == null || serverMigrated) {
             if (server == null) openConnect(null);
             else openServer();
         }
@@ -132,7 +139,7 @@ public class MainActivity extends Activity {
         web.loadUrl(url);
     }
 
-    /** Сначала экран ожидания (Render «просыпается» до минуты), затем — сам портал */
+    /** Сначала экран ожидания, затем — сам портал */
     void openServer() {
         if (server == null) { openConnect(null); return; }
         web.loadUrl(ASSET_BASE + "loading.html?url=" + Uri.encode(server));
@@ -275,7 +282,7 @@ public class MainActivity extends Activity {
             try {
                 c = (HttpURLConnection) new URL(base + "/api/ai/status").openConnection();
                 c.setConnectTimeout(20000);
-                c.setReadTimeout(80000); // бесплатный Render просыпается до минуты
+                c.setReadTimeout(80000); // оставляем запас для медленного ответа сервера
                 c.setRequestProperty("Accept", "application/json");
                 int code = c.getResponseCode();
                 InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();

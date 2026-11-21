@@ -8,7 +8,7 @@ const path = require('path');
 
 const DEFAULTS = Object.freeze({
   mode: 'remote',                        // 'remote' — сайт портала (те же аккаунты и данные); 'local' — встроенный сервер
-  remoteUrl: 'https://ku-portal.onrender.com',
+  remoteUrl: 'https://ku-portal.alwaysdata.net',
   port: 3000,                            // порт встроенного сервера (если занят — берётся следующий свободный)
   demo: true,                            // тестовые аккаунты (teacher@demo.kz / student@demo.kz, пароль 1234)
   lmUrl: 'http://localhost:1234',        // LM Studio (Gemma) — AI-помощник
@@ -56,7 +56,13 @@ function createConfigStore(dir, safeStorage) {
     } else if (raw.lmKeyPlain) {
       lmKey = raw.lmKeyPlain;
     }
-    return sanitize({ ...raw, lmKey });
+    const cfg = sanitize({ ...raw, lmKey });
+    // Перевести сохранённую настройку предыдущих версий на текущий сайт.
+    if (cfg.remoteUrl === 'https://ku-portal.onrender.com') {
+      cfg.remoteUrl = DEFAULTS.remoteUrl;
+      save(cfg);
+    }
+    return cfg;
   }
 
   function save(cfg) {

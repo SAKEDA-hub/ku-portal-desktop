@@ -3,7 +3,7 @@
   'use strict';
   var A = window.KUApp;
   var $ = function (id) { return document.getElementById(id); };
-  var DEFAULT = (A && A.defaultServer()) || 'https://ku-portal.onrender.com';
+  var DEFAULT = (A && A.defaultServer()) || 'https://ku-portal.alwaysdata.net';
   var current = (A && A.getServer()) || '';
   var busy = false;
 

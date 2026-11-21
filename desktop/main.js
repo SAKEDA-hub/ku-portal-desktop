@@ -1,7 +1,7 @@
 /*
  * KU Portal Desktop — главный процесс Electron.
  *
- * Режим «Сайт» (по умолчанию): окно открывает опубликованный портал (https://ku-portal.onrender.com).
+ * Режим «Сайт» (по умолчанию): окно открывает опубликованный портал (https://ku-portal.alwaysdata.net).
  * Это тот же сайт — те же аккаунты, оценки, расписание, AI-помощник, онлайн-экзамен и настройки,
  * поэтому программа, сайт и приложение для телефона связаны общими данными.
  *
@@ -183,7 +183,7 @@ function openTarget() {
   if (!mainWin || mainWin.isDestroyed()) return;
   if (startError) return showError('Встроенный сервер не запустился', startError);
   if (cfg.mode === 'remote') {
-    // бесплатный Render «просыпается» до минуты — показываем экран ожидания, затем грузим сайт
+    // Показываем экран ожидания, затем загружаем сайт.
     mainWin.loadFile(UI('loading.html'), { search: new URLSearchParams({ url: targetUrl }).toString() })
       .catch(() => {})
       .finally(() => mainWin && !mainWin.isDestroyed() && mainWin.loadURL(targetUrl).catch(() => { /* did-fail-load покажет ошибку */ }));

@@ -91,7 +91,7 @@ jobs:
         timeout-minutes: 15
         run: |
           set -o pipefail
-          ${{ matrix.wrap }} node tests/smoke/desktop-smoke.js "${{ matrix.exe }}" --real https://ku-portal.onrender.com 2>&1 | tee -a build.log
+          ${{ matrix.wrap }} node tests/smoke/desktop-smoke.js "${{ matrix.exe }}" 2>&1 | tee -a build.log
       - name: Журнал → ветка ci/desktop-${{ matrix.name }}
         if: always()
         shell: bash
@@ -197,7 +197,7 @@ jobs:
             echo "## Телефон"
             echo "- Android: [KU-Portal.apk]($B/KU-Portal.apk)"
             echo ""
-            echo "Приложения открывают сайт портала https://ku-portal.onrender.com — те же аккаунты, оценки, расписание, AI-помощник и онлайн-экзамен."
+            echo "Приложения открывают сайт портала https://ku-portal.alwaysdata.net — те же аккаунты, оценки, расписание, KU Message и онлайн-экзамен."
             echo ""
             echo "Скачать всегда свежую версию: https://github.com/SAKEDA-hub/ku-portal-project · установка и инструкция: https://github.com/${GITHUB_REPOSITORY}#-инструкция-для-пользователей"
             echo ""
@@ -216,7 +216,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "🌐 Сайт: https://ku-portal.onrender.com"
+            echo "🌐 Сайт: https://ku-portal.alwaysdata.net"
             echo ""
             echo "- Windows — установщик: KU-Portal-Setup.exe, без установки: KU-Portal-Portable.exe"
             echo "- Android 7.0+: KU-Portal.apk"
