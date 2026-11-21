@@ -8,20 +8,20 @@
 
 | Система | Скачать |
 |---|---|
-| **Windows 10/11** — установщик (рекомендуется) | [KU-Portal-Setup.exe](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-Setup.exe) |
-| Windows — без установки (один файл) | [KU-Portal-Portable.exe](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-Portable.exe) |
-| **macOS** — Apple Silicon (M1, M2, M3, M4) | [KU-Portal-mac-arm64.dmg](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-mac-arm64.dmg) |
-| macOS — Intel | [KU-Portal-mac-x64.dmg](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-mac-x64.dmg) |
-| **Linux** | [KU-Portal-linux.AppImage](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-linux.AppImage) |
+| **Windows 10/11** — установщик (рекомендуется) | [KU-Portal-Setup.exe](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-Setup.exe) |
+| Windows — без установки (один файл) | [KU-Portal-Portable.exe](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-Portable.exe) |
+| **macOS** — Apple Silicon (M1, M2, M3, M4) | [KU-Portal-mac-arm64.dmg](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-mac-arm64.dmg) |
+| macOS — Intel | [KU-Portal-mac-x64.dmg](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-mac-x64.dmg) |
+| **Linux** | [KU-Portal-linux.AppImage](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-linux.AppImage) |
 
 ### 📱 Для телефона
 
 | Система | Скачать |
 |---|---|
-| **Android 7.0 и новее** | [KU-Portal.apk](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal.apk) |
+| **Android 7.0 и новее** | [KU-Portal.apk](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal.apk) |
 | iPhone / iPad | отдельного приложения нет — см. [инструкцию для iPhone](#iphone) |
 
-Ссылки всегда ведут на самую свежую версию. Все версии — [Releases](https://github.com/SAKEDA-hub/ku-portal-project/releases).
+Ссылки всегда ведут на самую свежую версию. Все версии — [Releases](https://github.com/SAKEDA-hub/ku-portal-desktop/releases).
 
 ---
 
@@ -29,7 +29,7 @@
 
 ### Windows
 
-1. Скачайте [KU-Portal-Setup.exe](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal-Setup.exe) и запустите.
+1. Скачайте [KU-Portal-Setup.exe](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal-Setup.exe) и запустите.
 2. Windows может показать синее окно «Система Windows защитила ваш компьютер» — у программы нет платного сертификата. Нажмите **«Подробнее» → «Выполнить в любом случае»**.
 3. Выберите папку (можно оставить как есть) → **«Установить»**. На рабочем столе появится ярлык **KU Portal**.
 4. Откройте программу и войдите своим аккаунтом портала — тем же, что на сайте.
@@ -55,7 +55,7 @@ chmod +x KU-Portal-linux.AppImage
 
 ### Android
 
-1. Откройте на телефоне ссылку [KU-Portal.apk](https://github.com/SAKEDA-hub/ku-portal-project/releases/latest/download/KU-Portal.apk) и скачайте файл.
+1. Откройте на телефоне ссылку [KU-Portal.apk](https://github.com/SAKEDA-hub/ku-portal-desktop/releases/latest/download/KU-Portal.apk) и скачайте файл.
 2. Откройте скачанный файл. Телефон попросит разрешить установку из этого источника (браузера или «Файлов») — **разрешите** и вернитесь назад.
 3. **«Установить»**. Google Play Защита может предупредить о неизвестном приложении — **«Всё равно установить»**.
 4. Приложение открывает сайт `ku-portal.alwaysdata.net`. В новой установке нажмите **«Сайт портала» → «Подключиться»**; установленная прежняя версия сама заменит адрес Render на новый. Затем войдите аккаунтом KU Portal.
@@ -128,7 +128,7 @@ chmod +x KU-Portal-linux.AppImage
 
 ### Как выходит новая версия
 
-Достаточно `git push` в ветку `main`. GitHub Actions проверит код, соберёт все файлы (около 5 минут) и опубликует релиз `v1.0.<номер сборки>` здесь и в публичном [ku-portal-project](https://github.com/SAKEDA-hub/ku-portal-project) — ссылки «Скачать» ведут туда. Для публикации в ku-portal-project нужен секрет `RELEASES_TOKEN` (fine-grained токен с правом Contents: Read and write на ku-portal-project); без него релиз появится только здесь. Ход сборки — вкладка **Actions**; журналы каждой части сохраняются ещё и в служебные ветки `ci/*` (их можно не трогать).
+Достаточно `git push` в ветку `main`. GitHub Actions проверит код, соберёт все файлы и опубликует релиз `v1.0.<номер сборки>` в Releases этого репозитория; ссылки «Скачать» ведут на него. Дополнительно файлы можно публиковать в отдельный репозиторий `ku-portal-project`, если настроен секрет `RELEASES_TOKEN` с правом Contents: Read and write на него. Ход сборки — вкладка **Actions**; журналы каждой части сохраняются ещё и в служебные ветки `ci/*` (их можно не трогать).
 
 Вручную: Actions → Build → **Run workflow**. Свой номер версии: `git tag v2.0.0 && git push origin v2.0.0`.
 
