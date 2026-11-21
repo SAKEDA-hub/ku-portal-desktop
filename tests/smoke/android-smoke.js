@@ -100,14 +100,15 @@ async function connectTo(base, kind, addr, expectOrigin, ms) {
   });
 
   await step('сохранение файла («Скачать мои данные» → системное окно «Сохранить»)', true, async () => {
+    await c.evaluate(`location.hash = '#/profile/privacy', true`);
+    await c.waitFor(`!!document.querySelector('[data-act="export"]')`, 10000, 'раздел конфиденциальности в кабинете');
     await c.evaluate(`(() => { const link = document.querySelector('[data-act="export"]'); if (!link) throw new Error('нет кнопки «Скачать мои данные»'); link.scrollIntoView({ block: 'center' }); link.click(); return true; })()`);
     await sleep(4000);
     screen('save-dialog');
     const top = sh('adb shell dumpsys activity activities');
     const ok = /documentsui|DocumentsUI|com.android.documentsui|com.google.android.documentsui/i.test(top);
-    sh('adb shell input keyevent 4');
-    await sleep(1500);
-    if (!ok) throw new Error('системное окно сохранения не открылось');
+    if (ok) { sh('adb shell input keyevent 4'); await sleep(1500); }
+    else throw new Error('системное окно сохранения не открылось; текущая Activity: ' + top.split('\n').filter((x) => /mResumedActivity|topResumedActivity|ResumedActivity/i.test(x)).join(' | '));
     return true;
   });
 
