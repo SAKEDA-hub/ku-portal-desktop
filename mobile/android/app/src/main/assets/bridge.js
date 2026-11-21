@@ -3,7 +3,8 @@
  * странице портала/онлайн-экзамена (MainActivity.injectBridge). Повторное подключение безопасно.
  *  - window.Notification → системные уведомления Android (в WebView своего Notification API нет);
  *  - поправки раскладки на узком экране (верхняя панель онлайн-экзамена, плитки сервисов);
- *  - скачивание blob:/data:-ссылок (экспорт данных JSON, CSV ведомости, tests.json) → «Сохранить как».
+ *  - скачивание blob:/data:-ссылок (экспорт данных JSON, CSV ведомости, tests.json) → «Сохранить как»;
+ *    Blob читается локально, чтобы не нарушать connect-src CSP при загрузке blob:-URL.
  */
 (function () {
   'use strict';
@@ -57,15 +58,48 @@
   document.addEventListener('DOMContentLoaded', appFix);
 
   /* ---------- сохранение файлов ---------- */
+  var blobFiles = new Map();
+  var makeBlobUrl = URL.createObjectURL.bind(URL);
+  var revokeBlobUrl = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = function (value) {
+    var href = makeBlobUrl(value);
+    if (value instanceof Blob) blobFiles.set(href, value);
+    return href;
+  };
+  URL.revokeObjectURL = function (href) {
+    blobFiles.delete(href);
+    return revokeBlobUrl(href);
+  };
+
+  function sendFile(blob, name) {
+    if (!(blob instanceof Blob)) { B.toast('Не удалось сохранить файл'); return; }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var s = String(fr.result), i = s.indexOf(',');
+      B.saveFile(name || 'ku-portal-file', blob.type || 'application/octet-stream', s.slice(i + 1));
+    };
+    fr.onerror = function () { B.toast('Не удалось сохранить файл'); };
+    fr.readAsDataURL(blob);
+  }
   function saveHref(href, name) {
-    fetch(href).then(function (r) { return r.blob(); }).then(function (blob) {
-      var fr = new FileReader();
-      fr.onload = function () {
-        var s = String(fr.result), i = s.indexOf(',');
-        B.saveFile(name || 'ku-portal-file', blob.type || 'application/octet-stream', s.slice(i + 1));
-      };
-      fr.onerror = function () { B.toast('Не удалось сохранить файл'); };
-      fr.readAsDataURL(blob);
+    var localBlob = blobFiles.get(href);
+    if (localBlob) { sendFile(localBlob, name); return; }
+    if (/^data:/i.test(href)) {
+      try {
+        var comma = href.indexOf(','), meta = href.slice(5, comma), body = href.slice(comma + 1);
+        var bytes;
+        if (/;base64/i.test(meta)) {
+          var raw = atob(body); bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        } else {
+          bytes = new TextEncoder().encode(decodeURIComponent(body));
+        }
+        sendFile(new Blob([bytes], { type: meta.split(';')[0] || 'application/octet-stream' }), name);
+      } catch (e) { B.toast('Не удалось сохранить файл'); }
+      return;
+    }
+    fetch(href).then(function (r) { if (!r.ok) throw new Error('download failed'); return r.blob(); }).then(function (blob) {
+      sendFile(blob, name);
     }).catch(function () { B.toast('Не удалось сохранить файл'); });
   }
   function isFileLink(a) {
