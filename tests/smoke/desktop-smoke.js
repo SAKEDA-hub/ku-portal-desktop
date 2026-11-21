@@ -46,9 +46,17 @@ function startSite(port) {
   return { proc: p, dir };
 }
 
-function demoPassword(dir) {
+async function demoPassword(dir) {
   const file = path.join(dir, 'data', 'demo', 'demo-credentials.json');
-  return JSON.parse(fs.readFileSync(file, 'utf8'))['student@demo.kz'];
+  const until = Date.now() + 15000;
+  while (Date.now() < until) {
+    try {
+      const password = JSON.parse(fs.readFileSync(file, 'utf8'))['student@demo.kz'];
+      if (password) return password;
+    } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    await sleep(100);
+  }
+  throw new Error('демо-сервер не создал файл паролей');
 }
 
 function killTree(p) {
@@ -111,7 +119,7 @@ async function portalIn(app, name, site, opts = {}) {
     try {
       await waitHttp(`http://127.0.0.1:${port}/`, 20000);
       const app = await launch('A-site', { mode: 'remote', remoteUrl: `http://127.0.0.1:${port}` });
-      try { return await portalIn(app, 'A-site', `http://127.0.0.1:${port}/`, { demoPassword: demoPassword(site.dir) }); } finally { await close(app); }
+      try { return await portalIn(app, 'A-site', `http://127.0.0.1:${port}/`, { demoPassword: await demoPassword(site.dir) }); } finally { await close(app); }
     } finally { killTree(site.proc); }
   });
 
@@ -119,7 +127,7 @@ async function portalIn(app, name, site, opts = {}) {
     const port = await freePort();
     const app = await launch('B-local', { mode: 'local', port, lmUrl: 'http://127.0.0.1:9' });
     try {
-      const r = await portalIn(app, 'B-local', `http://127.0.0.1:${port}/`, { demoPassword: demoPassword(path.join(app.ud, 'portal')) });
+      const r = await portalIn(app, 'B-local', `http://127.0.0.1:${port}/`, { demoPassword: await demoPassword(path.join(app.ud, 'portal')) });
       const db = path.join(app.ud, 'portal', 'data', 'demo', 'db.json');
       if (!fs.existsSync(db)) throw new Error('нет данных встроенного сервера: ' + db);
       return r;
