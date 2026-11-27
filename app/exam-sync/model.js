@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { HttpError } = require('../server/http');
 const { studentQuestion, scoreQuestion, round } = require('./grading');
+const ExamModel = require('./eb/model');
 
 const collections = ['users', 'tests', 'rooms', 'attempts', 'writings', 'queue', 'grades', 'timers'];
 const parts = ['test', 'writing', 'speaking'];
@@ -13,38 +14,88 @@ const personal = (map, userId) => values(map).filter(r => r.userId === userId);
 const failing = (status, reason) => { throw new HttpError(status, reason); };
 const deny = () => failing(403, 'Нет доступа к этой операции');
 const invalid = () => failing(400, 'Некорректные данные экзамена');
-const publicUser = u => ({ id: u.id, login: u.login, name: u.name, role: u.role, group: u.group || '', groups: u.role === 'teacher' && Array.isArray(u.groups) ? u.groups : [] });
+const publicUser = u => ({ id: u.id, login: u.login, name: u.name, role: u.role,
+  ...(u.authSource === 'portal' ? { authSource: 'portal', group: u.portalGroup || '', groups: Array.isArray(u.groups) ? u.groups : [] } : {}) });
 const publicTimer = ({ examTest, ...timer }) => timer;
 const timerId = (room, user, part, test = '') => ['tm', room, user, part, test].join('|');
 const findWork = (map, uid, room, test) => values(map).find(r => r.userId === uid && r.roomId === room && (!test || r.testId === test));
+function groupCode(value) {
+  const text = String(value || '').normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+  const match = /^(ИСУ|БТ|ISU|BT|BM|BD)-?(20\d{2}|\d{2})-(\d+)$/.exec(text);
+  if (!match) return text;
+  const faculty = ({ ISU: 'ИСУ', BT: 'БТ' })[match[1]] || match[1];
+  return faculty + '-' + String(Number(match[2]) % 100).padStart(2, '0') + '-' + String(Number(match[3]));
+}
+function studentGroup(user) {
+  if (user.portalGroup) return groupCode(user.portalGroup);
+  if (user.faculty != null && user.year != null && user.group != null) return groupCode([user.faculty, user.year, user.group].join('-'));
+  return groupCode(user.group || '');
+}
+function roomGroups(room) {
+  const groups = Array.isArray(room?.groups) ? room.groups : [];
+  const subgroups = Array.isArray(room?.subgroups) ? room.subgroups : [];
+  return groups.length ? groups : subgroups.length ? subgroups : groups;
+}
+function roomHasStudentGroup(room, student) {
+  const groups = roomGroups(room);
+  return !groups.length || groups.some(group => groupCode(group) === studentGroup(student));
+}
+function roomOpen(room, now = Date.now()) {
+  if (!room) return false;
+  if (room.durMode !== undefined || Number.isFinite(room.startAt) || Number.isFinite(room.endAt)) {
+    return (!Number.isFinite(room.startAt) || now >= room.startAt) && (!Number.isFinite(room.endAt) || now < room.endAt);
+  }
+  return room.open === true;
+}
+function publicExam(exam) {
+  const out = structuredClone(exam);
+  for (const section of Object.values(out.sections || {})) for (const task of section.tasks || []) {
+    const scored = ExamModel.grade(task, undefined);
+    task._keyed = !!scored && !scored.ungraded;
+    if (task.type === 'gap') task.question = ExamModel.parseGaps(task.question).map(part => part.gap ? '{{}}' : part.text).join('');
+    if (task.kind === 'transcript') task.text = '';
+    delete task.answer; delete task.answers; delete task.transcript;
+  }
+  return out;
+}
+function publicTest(test) {
+  return test.kind === 'exam' && test.exam
+    ? { ...test, exam: publicExam(test.exam), questions: [] }
+    : { id:test.id, title:test.title, timeLimit:test.timeLimit, questions:[], questionCount:(test.questions || []).length };
+}
 
 function view(db, user) {
   if (user.role === 'teacher') {
     const data = Object.fromEntries(collections.map(c => [c, values(db[c])]));
-    const groups = new Set(Array.isArray(user.groups) ? user.groups : []);
-    const visibleIds = new Set(data.users.filter(u => u.role === 'student' && u.group && groups.has(u.group)).map(u => u.id));
+    const groups = new Set((Array.isArray(user.groups) ? user.groups : []).map(groupCode));
+    const visibleIds = new Set(data.users.filter(u => u.role === 'student' && studentGroup(u) && groups.has(studentGroup(u))).map(u => u.id));
     const scopedRoom = room => [...db.attempts.values(), ...db.writings.values(), ...db.queue.values(), ...db.grades.values(), ...db.timers.values()]
-      .some(row => row.roomId === room.id && visibleIds.has(row.userId));
+      .some(row => row.roomId === room.id && visibleIds.has(row.userId) && roomHasStudentGroup(room, db.users.get(row.userId)));
     data.users = data.users.filter(u => u.id === user.id || visibleIds.has(u.id)).map(publicUser);
-    for (const col of ['attempts', 'writings', 'queue', 'grades']) data[col] = data[col].filter(row => visibleIds.has(row.userId));
-    data.timers = data.timers.filter(t => t.limit > 0 && visibleIds.has(t.userId)).map(publicTimer);
-    const visibleRooms = new Set(data.rooms.filter(r => Array.isArray(r.groups) && r.groups.length
-      ? r.groups.every(g => groups.has(g)) : r.createdBy === user.id || scopedRoom(r)).map(r => r.id));
-    const usedTests = new Set(data.rooms.filter(r => visibleRooms.has(r.id)).flatMap(r => r.test?.testIds || []));
-    data.rooms = data.rooms.filter(r => visibleRooms.has(r.id));
-    data.tests = data.tests.filter(t => t.createdBy === user.id || usedTests.has(t.id) || /^ku-upd-/.test(t.id));
+    const visibleRooms = new Set(data.rooms.filter(room => {
+      const assigned = roomGroups(room).map(groupCode).filter(Boolean);
+      return room.ownerId === user.id || (assigned.length ? assigned.some(group => groups.has(group)) : scopedRoom(room));
+    }).map(room => room.id));
+    const visibleWork = row => {
+      const student = db.users.get(row.userId), room = db.rooms.get(row.roomId);
+      return visibleIds.has(row.userId) && visibleRooms.has(row.roomId) && roomHasStudentGroup(room, student);
+    };
+    for (const col of ['attempts', 'writings', 'queue', 'grades']) data[col] = data[col].filter(visibleWork);
+    data.timers = data.timers.filter(t => t.limit > 0 && visibleWork(t)).map(publicTimer);
+    const usedTests = new Set(data.rooms.filter(room => visibleRooms.has(room.id)).flatMap(room => room.test?.testIds || []));
+    data.rooms = data.rooms.filter(room => visibleRooms.has(room.id));
+    data.tests = data.tests.filter(test => test.ownerId === user.id || usedTests.has(test.id));
     return data;
   }
   const own = {};
   for (const name of ['attempts', 'writings', 'queue', 'grades', 'timers']) own[name] = personal(db[name], user.id);
   const touched = new Set(Object.values(own).flat().map(r => r.roomId));
-  const rooms = values(db.rooms).filter(r => (!Array.isArray(r.groups) || !r.groups.length || r.groups.includes(user.group)) && (r.open || touched.has(r.id))).map(r =>
+  const rooms = values(db.rooms).filter(r => (!Array.isArray(r.groups) || !r.groups.length || r.groups.some(g => groupCode(g) === studentGroup(user))) &&
+    (roomOpen(r) || (Number.isFinite(r.startAt) && r.startAt > Date.now()) || touched.has(r.id))).map(r =>
     r.writing?.minutes > 0 && !db.timers.has(timerId(r.id, user.id, 'writing')) && !findWork(db.writings, user.id, r.id)
       ? { ...r, writing: { ...r.writing, prompt: '' } } : r);
   const published = new Set(rooms.filter(r => r.test?.on).flatMap(r => r.test.testIds));
-  const tests = values(db.tests).filter(t => published.has(t.id)).map(t => ({
-    id: t.id, title: t.title, timeLimit: t.timeLimit, questions: [], questionCount: t.questions.length,
-  }));
+  const tests = values(db.tests).filter(t => published.has(t.id)).map(publicTest);
   own.attempts = own.attempts.map(a => a.showAnswers ? a :
     { ...a, details: (a.details || []).map(({ corr, ...detail }) => detail) });
   own.timers = own.timers.filter(t => t.limit > 0).map(publicTimer);
@@ -54,18 +105,31 @@ function view(db, user) {
   return { users: [publicUser(user)], tests, rooms, ...own };
 }
 
-function validExamMedia(media) {
-  if (media === undefined) return true;
-  return Array.isArray(media) && media.length <= 4 && media.every(item => item && item.kind === 'audio' &&
-    typeof item.name === 'string' && item.name.length <= 120 && typeof item.src === 'string' && item.src.length <= 140_000 &&
-    /^data:audio\/(?:mpeg|ogg|wav|webm);base64,[A-Za-z0-9+/]+={0,2}$/.test(item.src));
-}
-
 function openRoom(db, user, roomId, part) {
   const room = db.rooms.get(roomId);
-  if (!room?.open || !room[part]?.on) deny();
-  if (user.role === 'student' && Array.isArray(room.groups) && room.groups.length && !room.groups.includes(user.group)) deny();
+  if (!roomOpen(room) || !room[part]?.on) deny();
+  if (user.role === 'student' && !roomHasStudentGroup(room, user)) deny();
   return room;
+}
+
+function examSkills(room, test) {
+  if (!test?.exam) return [];
+  const settings = test.exam.settings || {}, order = Array.isArray(room.xorder) && room.xorder.length
+    ? room.xorder : settings.order || ExamModel.SECTION_TYPES;
+  const enabled = settings.enabled || {};
+  const online = new Set();
+  if (room.test?.on) for (const skill of ['test', 'reading', 'listening']) {
+    if (enabled[skill] !== false && (test.exam.sections?.[skill]?.tasks || []).some(t => t.type !== 'info')) online.add(skill);
+  }
+  if (room.writing?.on && enabled.writing !== false && (test.exam.sections?.writing?.tasks || []).some(t => t.type === 'essay')) online.add('writing');
+  if (room.speaking?.on && enabled.speaking !== false) online.add('speaking');
+  return [...new Set(order)].filter(k => online.has(k));
+}
+function examTimeLimit(room, test) {
+  if (!test?.exam) return +test?.timeLimit || 0;
+  const settings = test.exam.settings || {};
+  const sum = examSkills(room, test).reduce((total, k) => total + (+settings.skillTime?.[k] || 0), 0);
+  return sum || (+test.timeLimit || 0);
 }
 
 function startTest(db, user, body, now) {
@@ -76,14 +140,13 @@ function startTest(db, user, body, now) {
   const id = timerId(room.id, user.id, 'test', body.testId);
   let timer = db.timers.get(id);
   const test = timer?.examTest || db.tests.get(body.testId);
-  if (!test?.questions?.length) invalid();
+  if (!(test?.kind === 'exam' ? test.exam?.format === 'exam-builder/1' : test?.questions?.length)) invalid();
   if (!timer || !timer.examTest) {
     timer = { id, userId: user.id, roomId: room.id, part: 'test', testId: test.id,
-      limit: test.timeLimit || 0, title: test.title, startedAt: now, pauseMs: 0, awayAt: null, frozen: false, ...timer, examTest: test };
+      limit: examTimeLimit(room, test), title: test.title, startedAt: now, pauseMs: 0, awayAt: null, frozen: false, ...timer, examTest: test };
     db.timers.set(id, timer);
   }
-  return { test: { id: test.id, title: test.title, shuffle: test.shuffle, timeLimit: test.timeLimit,
-    questions: test.questions.map(studentQuestion) }, timer: publicTimer(timer) };
+  return { test: test.kind === 'exam' && test.exam ? { ...test, exam:publicExam(test.exam), questions:[] } : { id: test.id, title: test.title, shuffle: test.shuffle, timeLimit: test.timeLimit, passPercent:test.passPercent, showAnswers:test.showAnswers, questions: test.questions.map(studentQuestion) }, timer: publicTimer(timer) };
 }
 function elapsed(timer, now) {
   return Math.max(0, (timer.frozen && timer.awayAt ? timer.awayAt : now) - timer.startedAt - (timer.pauseMs || 0));
@@ -99,8 +162,10 @@ function submitTest(db, user, body, now) {
   const room = openRoom(db, user, body.roomId, 'test');
   const key = timerId(room.id, user.id, 'test', body.testId);
   const timer = db.timers.get(key);
-  if (!timer?.examTest || !room.test.testIds.includes(body.testId) || !Array.isArray(body.answers)) invalid();
+  if (!timer?.examTest || !room.test.testIds.includes(body.testId)) invalid();
   const test = timer.examTest, late = tooLate(timer, now);
+  if (test.kind === 'exam' && test.exam && body.exam === true) return submitExam(db, user, body, now, room, timer, test, late);
+  if (!Array.isArray(body.answers)) invalid();
   const details = test.questions.map((q, i) => ({ ...scoreQuestion(q, late ? null : body.answers[i]),
     time: Math.min(elapsed(timer, now), Math.max(0, Number(body.times?.[i]) || 0)) }));
   const score = round(details.reduce((sum, d) => sum + d.earned, 0));
@@ -112,6 +177,48 @@ function submitTest(db, user, body, now) {
     showAnswers: !!test.showAnswers, details };
   db.attempts.set(record.id, record); db.timers.delete(key);
   return { id: record.id };
+}
+
+function submitExam(db, user, body, now, room, timer, test, late) {
+  if (!body.answers || typeof body.answers !== 'object' || Array.isArray(body.answers)) invalid();
+  const exam = test.exam, details = [], bySkill = {};
+  for (const skill of examSkills(room, test)) {
+    const section = exam.sections?.[skill];
+    if (!section) continue;
+    for (const task of section.tasks || []) {
+      if (task.type === 'info' || task.type === 'essay') continue;
+      const scored = ExamModel.grade(task, late ? undefined : body.answers[task.id]);
+      if (!scored || scored.ungraded || !(scored.max > 0)) continue;
+      const earned = Math.round(scored.score * 10) / 10, max = Math.round(scored.max * 100) / 100;
+      const response = body.answers[task.id];
+      const userText = Array.isArray(response) ? response.join(', ') : response == null ? '—' : String(response).slice(0, 2000);
+      const answer = task.type === 'mc' || task.type === 'tf' ? String(task.answer ?? '') :
+        Array.isArray(task.answers) ? task.answers.join(' / ') : String(task.answer ?? '');
+      const status = response == null || response === '' ? 'empty' : earned >= max ? 'correct' : earned > 0 ? 'partial' : 'wrong';
+      details.push({ text:String(task.question || task.title || ''), type:({mc:'single',multi:'multi',tf:'tf',match:'match',gap:'gaps',short:'input'})[task.type] || 'input',
+        sec:section.title || ExamModel.SECTION_LABELS[skill], skill, earned, max, status, user:userText, corr:answer });
+      const part = bySkill[skill] || (bySkill[skill] = { score:0, max:0 }); part.score += earned; part.max += max;
+    }
+  }
+  for (const part of Object.values(bySkill)) part.score = Math.floor((part.score + 1e-9) * 2) / 2;
+  const score = round(Object.values(bySkill).reduce((sum, x) => sum + x.score, 0));
+  const max = round(details.reduce((sum, x) => sum + x.max, 0));
+  const percent = max ? Math.round(score / max * 100) : 0;
+  const record = { id:crypto.randomUUID(), userId:user.id, roomId:room.id, testId:test.id, testTitle:test.title,
+    startedAt:timer.startedAt, finishedAt:now, duration:elapsed(timer, now), auto:!!late || !!body.auto, timeLimit:timer.limit || 0,
+    late:!!late, score, max, percent, passed:percent >= (+test.passPercent || 60), passPercent:+test.passPercent || 60,
+    showAnswers:!!exam.settings?.showResults, details };
+  db.attempts.set(record.id, record); db.timers.delete(timer.id);
+  for (const [skill, part] of Object.entries(bySkill)) {
+    const online = ['test', 'reading', 'listening'].includes(skill) && room.test?.on;
+    const max = +room[skill]?.max || 0;
+    if (online && max > 0 && part.max > 0) {
+      const key = [room.id, user.id, skill].join('|');
+      const score = Math.floor((part.score / part.max * max + 1e-9) * 2) / 2;
+      db.grades.set(key, { roomId:room.id, userId:user.id, part:skill, score, max, comment:'', gradedAt:now, by:'auto', auto:true });
+    }
+  }
+  return { id:record.id };
 }
 
 function updateTimer(db, user, row, now) {
@@ -155,12 +262,17 @@ function studentWrite(db, col, row, user, now) {
 }
 
 function validateTest(t) {
+  if (t && t.kind === 'exam' && t.exam && t.exam.format === 'exam-builder/1') {
+    if (typeof t.title !== 'string' || t.title.length > 300 || !Array.isArray(t.questions) || t.questions.length !== 0) invalid();
+    const normalized = ExamModel.normalize(t.exam);
+    if (ExamModel.activeSections(normalized).length > 5 || JSON.stringify(normalized).length > 8_000_000) invalid();
+    return;
+  }
   if (typeof t.title !== 'string' || !Array.isArray(t.questions) || t.questions.length > 400 ||
       !Number.isFinite(+t.timeLimit) || +t.timeLimit < 0) invalid();
   const strings = list => Array.isArray(list) && list.length > 0 && list.length <= 200 && list.every(x => typeof x === 'string');
   for (const q of t.questions) {
-    if (!q || !validId(q.id) || typeof q.text !== 'string' || q.text.length > 20_000 ||
-        !Number.isFinite(+q.points) || +q.points < 0 || !validExamMedia(q.media)) invalid();
+    if (!q || !validId(q.id) || typeof q.text !== 'string' || !Number.isFinite(+q.points) || +q.points < 0) invalid();
     if (['single', 'multi'].includes(q.type) && !strings(q.options)) invalid();
     switch (q.type) {
       case 'single': if (!Number.isInteger(q.correct) || q.options[q.correct] === undefined) invalid(); break;
@@ -176,47 +288,53 @@ function validateTest(t) {
 
 function teacherWrite(db, col, row, session, now) {
   const teacher = db.users.get(session.uid);
-  const assignedGroups = new Set(Array.isArray(teacher?.groups) ? teacher.groups : []);
+  const assignedGroups = new Set((Array.isArray(teacher?.groups) ? teacher.groups : []).map(groupCode));
+  const teacherCanAccessRoom = room => {
+    if (!room) return false;
+    if (room.ownerId === session.uid) return true;
+    return roomGroups(room).some(group => assignedGroups.has(groupCode(group)));
+  };
   const studentInScope = userId => {
     const student = db.users.get(userId);
-    return student?.role === 'student' && !!student.group && assignedGroups.has(student.group);
+    return student?.role === 'student' && !!studentGroup(student) && assignedGroups.has(studentGroup(student));
   };
   if (col === 'timers') {
     const old = db.timers.get(row.id);
-    const room = old && db.rooms.get(old.roomId);
-    if (!old?.awayAt || !studentInScope(old.userId) || (Array.isArray(room?.groups) && room.groups.length && !room.groups.includes(db.users.get(old.userId)?.group))) deny();
+    const room = old && db.rooms.get(old.roomId), student = old && db.users.get(old.userId);
+    if (!old?.awayAt || !teacherCanAccessRoom(room) || !studentInScope(old.userId) || !roomHasStudentGroup(room, student)) deny();
     db.timers.set(row.id, { ...old, frozen: !!row.frozen, frozenAt: now, frozenBy: session.uid });
     return;
   }
   if (col === 'grades') {
     if (!(session.gradingUntil > now)) deny();
-    const student = db.users.get(row.userId), roomRow = db.rooms.get(row.roomId);
-    if (row.id || !parts.includes(row.part) || !studentInScope(row.userId) || (Array.isArray(roomRow?.groups) && roomRow.groups.length && !roomRow.groups.includes(student.group))) deny();
-    const part = roomRow?.[row.part];
+    const student = db.users.get(row.userId), gradeRoom = db.rooms.get(row.roomId);
+    if (row.id || !parts.includes(row.part) || !teacherCanAccessRoom(gradeRoom) || !studentInScope(row.userId) || !roomHasStudentGroup(gradeRoom, student)) deny();
+    const part = gradeRoom?.[row.part];
     if (!part?.on || !Number.isFinite(row.score) || row.score < 0 || row.score > part.max) invalid();
     db.grades.set(rowKey(row), { roomId: row.roomId, userId: row.userId, part: row.part, score: row.score,
       max: +part.max, comment: String(row.comment || '').slice(0, 4000), gradedAt: now, by: session.uid });
     return;
   }
   if (!validId(row.id)) invalid();
-  if (col === 'tests') {
-    validateTest(row);
-    const old = db.tests.get(row.id);
-    if (old?.createdBy && old.createdBy !== session.uid) deny();
-    db[col].set(row.id, { ...row, createdBy: old?.createdBy || session.uid });
-    return;
+  const previous = db[col].get(row.id);
+  if (['tests', 'rooms'].includes(col)) {
+    if (previous && previous.ownerId !== session.uid) deny();
+    if (!previous && row.ownerId && row.ownerId !== session.uid) deny();
+    if (!row.ownerId) row = { ...row, ownerId:session.uid };
   }
+  if (col === 'tests') validateTest(row);
   else if (col === 'rooms') {
-    if (typeof row.title !== 'string' || typeof row.open !== 'boolean' || !parts.every(p => row[p] && typeof row[p].on === 'boolean') ||
-        !Array.isArray(row.test.testIds) || !row.test.testIds.every(validId) || !Array.isArray(row.groups) || !row.groups.length ||
-        row.groups.length > assignedGroups.size || row.groups.some(g => typeof g !== 'string' || !assignedGroups.has(g))) invalid();
-    const old = db.rooms.get(row.id);
-    if (Array.isArray(old?.groups) && old.groups.some(g => !assignedGroups.has(g))) deny();
-    db[col].set(row.id, { ...row, groups: [...new Set(row.groups)], createdBy: old?.createdBy || session.uid });
-    return;
+    const targetGroups = roomGroups(row);
+    if (!targetGroups.length) {
+      if (!assignedGroups.size) deny();
+      row = Array.isArray(row.groups) ? { ...row, groups: [...assignedGroups] } : { ...row, subgroups: [...assignedGroups] };
+    } else if (targetGroups.some(group => !assignedGroups.has(groupCode(group)))) deny();
+    if (typeof row.title !== 'string' || !parts.every(p => row[p] && typeof row[p].on === 'boolean') ||
+        !Array.isArray(row.test?.testIds) || !row.test.testIds.every(validId) ||
+        (row.startAt != null && !Number.isFinite(row.startAt)) || (row.endAt != null && !Number.isFinite(row.endAt))) invalid();
   } else if (col === 'queue') {
     const room = db.rooms.get(row.roomId), student = db.users.get(row.userId);
-    if (!room || !studentInScope(row.userId) || (Array.isArray(room.groups) && room.groups.length && !room.groups.includes(student.group)) ||
+    if (!teacherCanAccessRoom(room) || !studentInScope(row.userId) || !roomHasStudentGroup(room, student) ||
         !['waiting', 'called', 'live', 'done'].includes(row.status)) invalid();
   } else deny();
   db[col].set(row.id, row);
@@ -224,23 +342,28 @@ function teacherWrite(db, col, row, session, now) {
 
 function applyChanges(db, user, session, changes, now) {
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) invalid();
+  const teacherGroups = new Set((Array.isArray(user.groups) ? user.groups : []).map(groupCode));
   for (const [col, change] of Object.entries(changes)) {
     if (!collections.includes(col) || col === 'users') deny();
     if (!change || !Array.isArray(change.del) || !Array.isArray(change.up) || change.del.length + change.up.length > 5000) invalid();
     for (const key of change.del) {
-      if (user.role === 'teacher') {
-        const old = db[col].get(key);
-        const scopedGroups = new Set(Array.isArray(user.groups) ? user.groups : []);
-        if (['attempts', 'writings', 'queue', 'grades', 'timers'].includes(col) && old) {
-          const student = db.users.get(old.userId), room = db.rooms.get(old.roomId);
-          if (!student || !scopedGroups.has(student.group) || (Array.isArray(room?.groups) && room.groups.length && !room.groups.includes(student.group))) deny();
-        }
-        if (col === 'rooms' && Array.isArray(old?.groups) && old.groups.some(g => !scopedGroups.has(g))) deny();
-        if (col === 'tests' && old?.createdBy && old.createdBy !== user.id) deny();
+      if (user.role === 'teacher' && ['attempts', 'writings', 'queue', 'grades', 'timers'].includes(col)) {
+        const row = db[col].get(key), student = row && db.users.get(row.userId), room = row && db.rooms.get(row.roomId);
+        if (row && (student?.role !== 'student' || !teacherGroups.has(studentGroup(student)) || !room ||
+            !(room.ownerId === user.id || roomGroups(room).some(group => teacherGroups.has(groupCode(group)))) ||
+            !roomHasStudentGroup(room, student))) deny();
       }
-      if (user.role === 'teacher' && col === 'grades' && !(session.gradingUntil > now)) {
-        const grade = db.grades.get(key);
-        if (grade && db.rooms.has(grade.roomId) && !(grade.part === 'test' && !findWork(db.attempts, grade.userId, grade.roomId))) deny();
+      if (user.role === 'teacher' && ['tests', 'rooms'].includes(col)) {
+        const old = db[col].get(key); if (old && old.ownerId !== user.id) deny();
+      }
+      if (user.role === 'teacher' && col === 'queue') {
+        const old = db.queue.get(key), student = old && db.users.get(old.userId);
+        if (old && (student?.role !== 'student' || !teacherGroups.has(studentGroup(student)))) deny();
+      }
+      if (user.role === 'teacher' && col === 'grades') {
+        const grade = db.grades.get(key), student = grade && db.users.get(grade.userId);
+        if (grade && (student?.role !== 'student' || !teacherGroups.has(studentGroup(student)))) deny();
+        if (!(session.gradingUntil > now) && grade && !(grade.part === 'test' && !findWork(db.attempts, grade.userId, grade.roomId))) deny();
       }
       if (user.role === 'student') {
         // Timers are removed by the server as part of submission.

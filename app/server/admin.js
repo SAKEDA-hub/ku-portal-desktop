@@ -1,7 +1,7 @@
 'use strict';
 /*
  * Админ-панель портала (/admin/, API /api/admin/*) — для пользователей с правом admin (node scripts/access.js role <ID> admin).
- * Пользователи, допуск (approve/revoke), группы преподавателей, служебные права,
+ * Пользователи и заявки на регистрацию, допуск (approve/revoke), группы преподавателей, служебные права,
  * сброс пароля (временный пароль показывается один раз), удаление пользователя, копия базы.
  * Любое изменение (допуск, группы, права, сброс пароля, удаление) и копия базы требуют повторного ввода пароля
  * администратора раз в час (confirm): украденного токена сеанса недостаточно, чтобы выдать себе права.
@@ -15,43 +15,13 @@ const fs = require('fs');
 const path = require('path');
 const access = require('./access');
 const { scrubUsers } = require('./cleanup');
-const { readStoreJson, writeStoreJson, decodeStoredJson, writeJsonAtomic } = require('./store');
+const { GROUP_CATALOG } = require('./groups');
 
 const CONFIRM_MS = 60 * 60 * 1000;
 const TEMP_PASSWORD_MS = 72 * 60 * 60 * 1000; // временный пароль действует 3 суток — потом только новый сброс
 const FILE_ID_RE = /^[\w-]{1,100}$/;
 const ID_RE = /^[a-z]{2,5}_\d{1,9}$/;
 const PROVISION_DIR = 'portal-provision';
-const ROTATION_MARKER = 'account-rotation-batches.json';
-const BATCH_ID_RE = /^[a-f0-9-]{36}$/i;
-
-/* Encrypted one-time bundles may live in the public code repository. Only the
-   host's private KU_DATA_ENCRYPTION_KEY can unwrap them into 0600 provision files. */
-function stageBundledRotations({ DATA, bundleDir }) {
-  const markerFile = path.join(DATA, ROTATION_MARKER);
-  let applied = [];
-  try {
-    const marker = readStoreJson(markerFile);
-    if (Array.isArray(marker?.applied)) applied = marker.applied.filter(x => typeof x === 'string' && BATCH_ID_RE.test(x));
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  let files;
-  try { files = fs.readdirSync(bundleDir).filter(name => /^[a-z0-9][a-z0-9_-]{0,100}\.json\.enc$/i.test(name)).sort(); }
-  catch (error) { if (error.code === 'ENOENT') return; throw error; }
-  const pending = new Set(applied);
-  const provisionDir = path.join(DATA, PROVISION_DIR);
-  for (const name of files) {
-    const task = decodeStoredJson(fs.readFileSync(path.join(bundleDir, name), 'utf8'));
-    if (!task || task.action !== 'rotate-accounts' || !BATCH_ID_RE.test(task.batchId || '') ||
-        !Array.isArray(task.accounts) || !task.accounts.length || task.accounts.length > 100) {
-      throw new Error(`Некорректный зашифрованный пакет учётных записей: ${name}`);
-    }
-    if (pending.has(task.batchId)) continue;
-    fs.mkdirSync(provisionDir, { recursive:true, mode:0o700 });
-    const target = path.join(provisionDir, `rotation-${task.batchId}.json`);
-    if (!fs.existsSync(target)) writeJsonAtomic(target, task);
-    pending.add(task.batchId);
-  }
-}
 // временный пароль: без похожих символов (0/O, 1/l/I), удобно продиктовать
 const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function tempPassword(length = 12) {
@@ -71,7 +41,6 @@ function removeUploads(dataDir, ids) {
 /* Применить новый пароль к пользователю: все сеансы завершаются, при входе портал попросит сменить пароль */
 function applyNewPassword(user, hash, { reset2fa, dropUserSessions }) {
   Object.assign(user, { salt: hash.salt, passHash: hash.passHash, passAlgo: hash.passAlgo });
-  for (const field of ['password', 'passwordHash', 'legacyPassword', 'legacyHash']) delete user[field];
   user.passChangedAt = Date.now();
   user.mustChangePassword = true;
   user.tempPasswordUntil = Date.now() + TEMP_PASSWORD_MS;
@@ -81,7 +50,7 @@ function applyNewPassword(user, hash, { reset2fa, dropUserSessions }) {
 }
 
 function createAdmin(ctx) {
-  const { getDB, saveDB, ok, bad, sec, audit, passError, reqToken, dropUserSessions, isOnline, DATA, clearRotationBackups } = ctx;
+  const { getDB, saveDB, ok, bad, sec, audit, passError, reqToken, dropUserSessions, isOnline, DATA, help } = ctx;
   const confirmed = new Map(); // токен сеанса (отпечаток) → до какого времени не спрашивать пароль
   const provisionDir = path.join(DATA, PROVISION_DIR);
 
@@ -107,7 +76,7 @@ function createAdmin(ctx) {
   function needConfirm(res) { res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: 'Подтвердите пароль администратора', needConfirm: true })); }
 
   function backupBundle() {
-    const readJson = name => { try { return readStoreJson(path.join(DATA, name)); } catch { return null; } };
+    const readJson = name => { try { return JSON.parse(fs.readFileSync(path.join(DATA, name), 'utf8')); } catch { return null; } };
     const accessDir = path.join(DATA, 'access'), accessFiles = {};
     try { for (const f of fs.readdirSync(accessDir)) if (f.endsWith('.json')) accessFiles[f] = readJson(path.join('access', f)); } catch { /* каталога ещё нет */ }
     return { createdAt: new Date().toISOString(), db: getDB(), results: readJson('results.json'), examSync: readJson('exam-sync.json'), access: accessFiles };
@@ -120,10 +89,14 @@ function createAdmin(ctx) {
 
     if (p === '/api/admin/users' && req.method === 'GET') {
       const items = db.users.map(view).sort((a, b) => (a.access - b.access) || (b.createdAt || 0) - (a.createdAt || 0));
-      const groups = [...new Set(db.users.filter(x => x.role === 'student' && x.group).map(x => x.group))].sort();
+      // группы для выбора: справочник (server/groups.js) и прежние группы студентов, которых в нём нет
+      const catalog = GROUP_CATALOG;
+      const groups = [...new Set(db.users.filter(x => x.role === 'student' && x.group).map(x => x.group))].filter(g => !catalog.includes(g)).sort();
       const clubs = (db.clubs || []).map(c => ({ id: c.id, name: c.name }));
-      return ok(res, { items, groups, clubs, me: u.id, confirmed: isConfirmed(req) });
+      return ok(res, { items, groups, catalog, clubs, me: u.id, confirmed: isConfirmed(req) });
     }
+    // обращения преподавателей (server/help.js): список — без пароля, ответ — как любое изменение, после подтверждения
+    if (p === '/api/admin/help' && req.method === 'GET') return ok(res, { items: help ? help.listAll() : [] });
     if (req.method !== 'POST') return bad(res, 404, 'Не найдено');
 
     if (p === '/api/admin/confirm') {
@@ -143,6 +116,13 @@ function createAdmin(ctx) {
     }
 
     if (!isConfirmed(req)) return needConfirm(res);
+    if (p === '/api/admin/help/reply') {
+      if (!help) return bad(res, 404, 'Не найдено');
+      const r = help.reply(u, body);
+      if (r.error) return bad(res, r.error[0], r.error[1]);
+      audit('portal.help.reply', u.id, String(body.id || ''));
+      return ok(res, r);
+    }
     const target = userById(body.id);
     if (!target) return bad(res, 404, 'Пользователь не найден');
     const self = target.id === u.id;
@@ -211,42 +191,10 @@ function createAdmin(ctx) {
       return;
     }
     let changed = false;
-    let rotated = false;
-    const rotatedBatchIds = [];
-    let appliedBatchIds = [];
-    try {
-      const marker = readStoreJson(path.join(DATA, ROTATION_MARKER));
-      if (Array.isArray(marker?.applied)) appliedBatchIds = marker.applied.filter(x => typeof x === 'string' && BATCH_ID_RE.test(x));
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    const completed = [];
     for (const name of names) {
       const file = path.join(provisionDir, name);
       try {
         const task = JSON.parse(fs.readFileSync(file, 'utf8'));
-        if (task.action === 'rotate-accounts' && BATCH_ID_RE.test(task.batchId || '') &&
-            Array.isArray(task.accounts) && task.accounts.length > 0 && task.accounts.length <= 100) {
-          if (appliedBatchIds.includes(task.batchId)) { completed.push(file); continue; }
-          const ids = new Set();
-          const updates = task.accounts.map(item => {
-            const user = getDB().users.find(x => x.id === item.userId);
-            if (!user || user.demo || ids.has(item.userId) || !/^[a-f0-9]{32}$/i.test(item.salt || '') ||
-                !/^[a-f0-9]{64}$/i.test(item.passHash || '') || item.passAlgo !== 'scrypt') {
-              throw new Error('Пакет смены паролей содержит неизвестного пользователя или неверный хеш');
-            }
-            ids.add(item.userId);
-            return { user, item };
-          });
-          for (const { user, item } of updates) {
-            applyNewPassword(user, item, { reset2fa: item.reset2fa === true, dropUserSessions: () => {} });
-          }
-          for (const { user } of updates) dropUserSessions(user.id);
-          for (const { user } of updates) audit('portal.password.reset', 'operator', user.id);
-          changed = true;
-          rotated = true;
-          rotatedBatchIds.push(task.batchId);
-          completed.push(file);
-          continue;
-        }
         const user = getDB().users.find(x => x.id === task.userId);
         if (task.action === 'reset-password' && user && !user.demo && task.salt && task.passHash && task.passAlgo === 'scrypt') {
           applyNewPassword(user, task, { reset2fa: task.reset2fa === true, dropUserSessions });
@@ -254,18 +202,12 @@ function createAdmin(ctx) {
           changed = true;
         } else { console.error('[admin] поручение пропущено (неизвестный пользователь или неверные данные):', name); keep(file); continue; }
       } catch (error) { console.error('[admin] поручение не применено:', name, error.message); keep(file); continue; }
-      completed.push(file);
+      fs.rmSync(file, { force: true });
     }
     if (changed) saveDB();
-    if (rotated && typeof clearRotationBackups === 'function') clearRotationBackups();
-    if (rotatedBatchIds.length) {
-      appliedBatchIds = [...new Set([...appliedBatchIds, ...rotatedBatchIds])];
-      writeStoreJson(path.join(DATA, ROTATION_MARKER), { applied:appliedBatchIds }, 1);
-    }
-    for (const file of completed) fs.rmSync(file, { force: true });
   }
 
   return { handle, applyProvision };
 }
 
-module.exports = { createAdmin, stageBundledRotations, PROVISION_DIR, ROTATION_MARKER, tempPassword, removeUploads, TEMP_PASSWORD_MS };
+module.exports = { createAdmin, PROVISION_DIR, tempPassword, removeUploads, TEMP_PASSWORD_MS };
