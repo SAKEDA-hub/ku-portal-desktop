@@ -7,7 +7,8 @@ const { createStore, writeJsonAtomic } = require('../server/store');
 const { readJson, clientIp, HttpError, sendStatic } = require('../server/http');
 const { createLimiter, checkPassword, setPassword, setPasswordSync, PASSWORD_MIN, htmlPolicy } = require('../server/security');
 const { collections, view, publicUser, startTest, submitTest, submitWriting, applyChanges, validId } = require('./model');
-const { mergeUpdated } = require('./updated');
+const { syncPortalUsers } = require('./identity');
+const { createMediaStore } = require('./media-store');
 
 const empty = () => ({ format: 2, rev: 0, db: Object.fromEntries(collections.map(c => [c, []])) });
 function valid(snapshot) {
@@ -19,80 +20,76 @@ function valid(snapshot) {
 }
 
 function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile = path.join(__dirname, 'seed.json'),
-  redeemPortalCode = null, portalUserById = null, verifyPortalReauth = null }) {
+  resolvePortalHandoff = async () => null, validatePortalSession = () => false, verifyPortalPassword = async () => false,
+  getPortalAccounts = () => [] }) {
   const directory = path.dirname(dataFile);
   const audit = require('../server/audit').createAudit(directory);
+  const mediaStore = createMediaStore(path.join(directory, 'exam-media'), path.join(directory, 'backups'));
   const index = fs.readFileSync(path.join(__dirname, 'index.html'));
   const policy = htmlPolicy(index);
   const store = createStore({ file: dataFile, backupDir: path.join(directory, 'backups'), space: 0, valid,
     empty: () => demo ? JSON.parse(fs.readFileSync(seedFile, 'utf8')) : empty() });
   const snapshot = store.load();
+  const migratedMedia = mediaStore.externalize(snapshot.db);
+  snapshot.db = migratedMedia.data;
   let rev = snapshot.rev;
   let db = Object.fromEntries(collections.map(c => [c, new Map(snapshot.db[c])]));
-  /* В рабочем режиме вход только через KU Portal. В файле остаются лишь отпечатки случайных токенов;
-     учётная запись портала и её допуск перепроверяются при каждом запросе. */
+  /* Сеансы переживают перезапуск сервера (обновление во время экзамена не выкидывает студентов):
+     в exam-sessions.json лежат только sha256 токена и отпечаток хеша пароля, сами токены не сохраняются */
   const sessionsFile = path.join(directory, 'exam-sessions.json');
   const digest = raw => crypto.createHash('sha256').update(raw).digest('hex');
   const fingerprint = passHash => passHash ? digest('pass:' + passHash).slice(0, 32) : '';
   const sessions = new Map(); // sha256(токен) → { uid, hash, gradingUntil, expires }
-  if (demo) try {
+  try {
     for (const [key, s] of Object.entries(JSON.parse(fs.readFileSync(sessionsFile, 'utf8')))) {
-      if (/^[a-f0-9]{64}$/.test(key) && s && typeof s.uid === 'string' && Number.isFinite(s.expires) && s.expires > Date.now()) {
-        if (typeof s.hash === 'string') {
-          sessions.set(key, { uid: s.uid, hash: s.hash, gradingUntil: 0, expires: s.expires });
-        }
-      }
+      if (/^[a-f0-9]{64}$/.test(key) && s && typeof s.uid === 'string' && typeof s.hash === 'string' &&
+          Number.isFinite(s.expires) && s.expires > Date.now()) sessions.set(key, { uid: s.uid, hash: s.hash, portalSession: typeof s.portalSession === 'string' ? s.portalSession : '', gradingUntil: 0, expires: s.expires });
     }
   } catch (error) { if (error.code !== 'ENOENT') console.error('[exam-sync] сеансы не загружены:', error.message); }
   function saveSessions() {
     try {
-      writeJsonAtomic(sessionsFile, Object.fromEntries([...sessions].map(([key, s]) => [key, s.portalId
-        ? { uid:s.uid, portalId:s.portalId, authVersion:s.authVersion, role:s.role, expires:s.expires }
-        : { uid: s.uid, hash: s.hash, expires: s.expires }])));
+      writeJsonAtomic(sessionsFile, Object.fromEntries([...sessions].map(([key, s]) => [key, { uid: s.uid, hash: s.hash, ...(s.portalSession ? { portalSession: s.portalSession } : {}), expires: s.expires }])));
     } catch (error) { console.error('[exam-sync] сеансы не сохранены:', error.code || error.message); }
   }
   const streams = new Map();
-  const loginLimit = createLimiter({ max: 50, windowMs: 15 * 60_000 });
-  const accountLimit = createLimiter({ max: 10, windowMs: 15 * 60_000 });
-  const passwordLimit = createLimiter({ max: 8, windowMs: 15 * 60_000 });
-  const dummy = {}; setPasswordSync(dummy, crypto.randomUUID());
-  const uidByLogin = login => [...db.users.values()].find(u => u.login.toLowerCase() === login);
+const loginLimit = createLimiter({ max: 50, windowMs: 15 * 60_000 });
+const accountLimit = createLimiter({ max: 10, windowMs: 15 * 60_000 });
+const passwordLimit = createLimiter({ max: 8, windowMs: 15 * 60_000 });
+const dummy = {}; setPasswordSync(dummy, crypto.randomUUID());
+const uidByLogin = login => [...db.users.values()].find(u => u.login.toLowerCase() === login);
+const canonicalGroup = value => {
+  const m = /^(ИСУ|БТ|ISU|BT|BM|BD)-?(20\d{2}|\d{2})-(\d+)$/.exec(String(value || '').normalize('NFKC').trim().toUpperCase());
+  if (!m) return String(value || '').trim().toUpperCase();
+  const faculty = ({ ISU:'ИСУ', BT:'БТ' })[m[1]] || m[1];
+  return `${faculty}-${String(Number(m[2]) % 100).padStart(2, '0')}-${Number(m[3])}`;
+};
 
   function persist(next) {
     const nextRev = rev + 1;
-    store.save({ format: 2, rev: nextRev, db: Object.fromEntries(collections.map(c => [c, [...next[c]]])) });
-    db = next; rev = nextRev;
+    const media = mediaStore.externalize(Object.fromEntries(collections.map(c => [c, [...next[c]]])));
+    const saved = { format: 2, rev: nextRev, db: media.data };
+    mediaStore.snapshot(new Date().toISOString().slice(0, 10));
+    store.save(saved);
+    db = Object.fromEntries(collections.map(c => [c, new Map(media.data[c])]));
+    rev = nextRev;
+    mediaStore.prune(media.data);
     for (const [res, token] of streams) {
       if (!sessionFor(token)) { res.end(); streams.delete(res); }
       else res.write('data: ' + JSON.stringify({ rev }) + '\n\n');
     }
   }
 
-  // Старые пароли экзамена больше нигде не используются. Сохраняем ID для оценок и работ.
-  let migrated = snapshot.format !== 2;
-  let credentialsRemoved = false;
-  for (const [id, old] of db.users) {
+  // Legacy clients received the complete user table. Keep IDs and coursework, require new credentials.
+  let migrated = snapshot.format !== 2 || migratedMedia.changed;
+  if (migrated) for (const [id, old] of db.users) {
     const u = publicUser(old);
     if (demo && typeof old.password === 'string') setPasswordSync(u, old.password);
-    else if (demo && old.passHash && old.salt && old.passAlgo) Object.assign(u, { passHash:old.passHash, salt:old.salt, passAlgo:old.passAlgo });
-    else if (!demo && ['passHash', 'salt', 'passAlgo', 'password', 'passwordHash'].some(field => Object.hasOwn(old, field))) credentialsRemoved = true;
-    if (JSON.stringify(u) !== JSON.stringify(old)) migrated = true;
     db.users.set(id, u);
-  }
-  // Обновлённые экзамены добавляются и обновляются по стабильным ID. Старые
-  // попытки, работы, оценки, комнаты и аккаунты не удаляются этой миграцией.
-  if (mergeUpdated(db)) migrated = true;
-  // Прежние самостоятельные аккаунты экзамена и их сессии не могут оставаться способом входа.
-  if (!demo && (!portalUserById || !redeemPortalCode)) {
-    throw new Error('Для рабочего режима Online Exam требуется общий вход KU Portal');
-  }
-  if (!demo) {
-    try { fs.rmSync(sessionsFile, { force: true }); } catch { /* очищается при первом сохранении */ }
   }
   const provisionDir = path.join(directory, 'exam-provision');
   const processed = [];
   const accountEvents = [];
-  if (demo && fs.existsSync(provisionDir)) {
+  if (fs.existsSync(provisionDir)) {
     for (const file of fs.readdirSync(provisionDir).filter(n => /^\d+-[a-f0-9-]{36}\.json$/.test(n)).sort()) {
       const p = JSON.parse(fs.readFileSync(path.join(provisionDir, file), 'utf8'));
       const old = uidByLogin(p.login);
@@ -110,33 +107,36 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
       migrated = true;
     }
   }
-  else if (!demo) fs.rmSync(provisionDir, { recursive:true, force:true });
-  if (migrated) {
-    const cleanSnapshot = { format:2, rev:rev + 1, db:Object.fromEntries(collections.map(c => [c, [...db[c]]])) };
-    if (credentialsRemoved && !demo) {
-      store.replace(cleanSnapshot); rev = cleanSnapshot.rev;
-      store.clearBackups(); store.save(cleanSnapshot);
-    } else persist(db);
-  }
+  // Add archive templates idempotently; never reset existing tests, rooms, attempts, grades, or timers.
+  try {
+    const baseData = JSON.parse(fs.readFileSync(path.join(__dirname, 'base-exams.json'), 'utf8'));
+    const ownerMeta = { 't-aronov':['evgeney-aronov', 'евгений аронов'], 't-temirshol':['gilmira-temirshol', 'гильмира темиршол'], 't-vasilievna':['elena-vasilievna', 'елена васильевна'], 't-kosgahmenova':['dayana-kosgahmenova', 'даяна косгахменова'] };
+    for (const source of baseData.tests || []) {
+      const [login, name] = ownerMeta[source.ownerId] || [];
+      const owner = [...db.users.values()].find(u => u.role === 'teacher' && (u.login.toLowerCase() === login || String(u.name || '').trim().toLowerCase() === name));
+      if (!owner) continue;
+      const test = { ...source, ownerId:owner.id };
+      const sourceRoom = (baseData.rooms || []).find(r => r.test?.testIds?.includes(source.id));
+      const linkedRoom = sourceRoom && { ...sourceRoom, ownerId:owner.id, open:true };
+      const existing = db.tests.get(test.id);
+      const inUse = linkedRoom && [...db.attempts.values(), ...db.writings.values(), ...db.queue.values(), ...db.grades.values()].some(x => x.roomId === linkedRoom.id || x.testId === source.id);
+      if (!existing) { db.tests.set(test.id, test); migrated = true; }
+      else if (existing.kind === 'exam' && existing.baseKey === test.baseKey && !inUse && existing.baseSkillsVersion < test.baseSkillsVersion) {
+        db.tests.set(test.id, { ...test, ...existing, exam:test.exam, baseSkillsVersion:test.baseSkillsVersion }); migrated = true;
+      }
+      if (linkedRoom && !db.rooms.has(linkedRoom.id)) { db.rooms.set(linkedRoom.id, linkedRoom); migrated = true; }
+    }
+  } catch (error) { if (error.code !== 'ENOENT') console.error('[exam-sync] базовые экзамены не добавлены:', error.message); }
+  if (migrated) persist(db);
   for (const [event, id] of accountEvents) audit(event, 'operator', id);
   for (const file of processed) fs.unlinkSync(path.join(provisionDir, file));
 
   function sessionFor(token) {
     const s = sessions.get(token);
     if (!s) return null;
-    const identity = s.portalId ? portalUserById?.(s.portalId) : null;
-    const identityRole = identity?.role === 'student' ? 'student'
-      : identity?.role === 'teacher' || (identity?.role === 'staff' && identity.perms?.admin) ? 'teacher' : null;
-    const validPortal = s.portalId && s.portalId === s.uid && identity && identityRole === s.role &&
-      Number(identity.authVersion || 0) === Number(s.authVersion || 0);
-    if (s.expires <= Date.now() || (s.portalId ? !validPortal : (!demo || fingerprint(db.users.get(s.uid)?.passHash) !== s.hash))) {
+    if (s.expires <= Date.now() || fingerprint(db.users.get(s.uid)?.passHash) !== s.hash ||
+        (s.portalSession && !validatePortalSession(s.portalSession))) {
       sessions.delete(token); saveSessions(); return null;
-    }
-    if (s.portalId) {
-      const cached = db.users.get(s.uid);
-      if (cached && s.role === 'teacher') cached.groups = Array.isArray(identity.groups)
-        ? [...new Set(identity.groups.filter(g => typeof g === 'string' && g.length <= 100))] : [];
-      if (cached && s.role === 'student') cached.group = String(identity.group || '');
     }
     return s;
   }
@@ -154,17 +154,20 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
 
   function current(s) {
     const user = db.users.get(s.uid);
-    return { rev, user: publicUser(user), gradingUntil: s.gradingUntil || 0, db: view(db, user) };
+    return { rev, user: publicUser(user), gradingUntil: s.gradingUntil || 0, db: mediaStore.hydrate(view(db, user)) };
   }
   const requireSession = token => {
     const session = sessionFor(token);
     if (!session) throw new HttpError(401, 'Войдите в онлайн-экзамен');
     return session;
   };
-  const requirePassword = async (user, password) => {
+  const requirePassword = async (user, password, session) => {
     const release = passwordLimit.reserve(user.id);
     if (!release) throw new HttpError(429, 'Слишком много попыток');
-    if (typeof password !== 'string' || password.length > 256 || !await checkPassword(user, password)) throw new HttpError(403, 'Неверный пароль');
+    const valid = typeof password === 'string' && password.length <= 256 && (user.authSource === 'portal'
+      ? await verifyPortalPassword(session?.portalSession, password)
+      : await checkPassword(user, password));
+    if (!valid) throw new HttpError(403, 'Неверный пароль');
     release();
   };
   const nextDb = () => Object.fromEntries(collections.map(c => [c, new Map(db[c])]));
@@ -188,43 +191,44 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
     if (route === '/client.js' && req.method === 'GET') {
       sendStatic(req, res, 'exam-sync/client.js', fs.readFileSync(path.join(__dirname, 'client.js')), { 'Content-Type': 'text/javascript; charset=utf-8' }); return true;
     }
+    if (req.method === 'GET' && route === '/portal-refine.css') {
+      sendStatic(req, res, 'exam-sync/portal-refine.css', fs.readFileSync(path.join(__dirname, 'portal-refine.css')), { 'Content-Type': 'text/css; charset=utf-8' }); return true;
+    }
+    if (req.method === 'GET' && /^\/fonts\/montserrat-(?:cyrillic|cyrillic-ext|latin)-(?:400|500|600|700|800)-normal\.woff2$/.test(route)) {
+      const file = path.join(__dirname, route.slice(1));
+      sendStatic(req, res, 'exam-sync' + route, fs.readFileSync(file), { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=31536000, immutable' }); return true;
+    }
+    if (req.method === 'GET' && route.startsWith('/eb/')) {
+      const name = route.slice(4);
+      if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|md)$/.test(name)) throw new HttpError(404, 'Не найдено');
+      const file = path.join(__dirname, 'eb', name);
+      if (!file.startsWith(path.join(__dirname, 'eb') + path.sep) || !fs.existsSync(file)) throw new HttpError(404, 'Не найдено');
+      sendStatic(req, res, 'exam-sync/eb/' + name, fs.readFileSync(file), { 'Content-Type': name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/markdown; charset=utf-8' }); return true;
+    }
     if (route === '/api/info' && req.method === 'GET') return json(res, { demo });
-    if (route === '/api/sso/redeem' && req.method === 'POST') {
-      // Demo and production both use the same one-use portal handoff. In demo mode
-      // the portal identity is isolated under data/demo, so this does not grant
-      // access to production accounts or data.
+    if (route === '/api/portal/redeem' && req.method === 'POST') {
       const body = await readJson(req, 4096);
-      const portal = await redeemPortalCode(body.code, 'exam');
-      if (!portal || !portal.id) throw new HttpError(401, 'Ссылка входа устарела. Откройте Online Exam из KU Portal');
-      const identity = portalUserById(portal.id);
-      if (!identity || !['student', 'teacher'].includes(identity.role) && !(identity.role === 'staff' && identity.perms?.admin)) {
-        throw new HttpError(403, 'У этой учётной записи нет доступа к Online Exam');
-      }
-      const user = { id: identity.id, login: String(identity.login || identity.email || identity.id).trim().toLowerCase(),
-        name: String(identity.fio || identity.firstName || identity.id).slice(0, 150),
-        role: identity.role === 'student' ? 'student' : 'teacher', group: String(identity.group || ''),
-        groups: identity.role === 'teacher' && Array.isArray(identity.groups) ? [...new Set(identity.groups.filter(g => typeof g === 'string' && g.length <= 100))] : [] };
-      const old = db.users.get(user.id);
-      if (!old || old.login !== user.login || old.name !== user.name || old.role !== user.role || old.group !== user.group ||
-          JSON.stringify(old.groups || []) !== JSON.stringify(user.groups) || old.passHash || old.salt || old.passAlgo) {
-        const next = nextDb(); next.users.set(user.id, user); persist(next);
-      }
+      const handoff = await resolvePortalHandoff(String(body.code || ''));
+      if (!handoff || !handoff.user || !handoff.sessionId) throw new HttpError(401, 'Ссылка для входа истекла — откройте экзамен из KU Portal');
+      const next = nextDb();
+      syncPortalUsers(next, handoff.accounts || getPortalAccounts());
+      const user = [...next.users.values()].find(row => row.portalUserId === handoff.user.id && row.portalActive);
+      if (!user) throw new HttpError(403, 'Для этого аккаунта экзамен недоступен');
+      persist(next);
       const token = crypto.randomBytes(32).toString('hex');
-      const session = { uid:user.id, portalId:user.id, authVersion:Number(identity.authVersion || 0), role:user.role,
-        gradingUntil:0, expires:Date.now() + 12 * 3600_000 };
+      const session = { uid: user.id, hash: fingerprint(user.passHash), portalSession: handoff.sessionId,
+        gradingUntil: 0, expires: Date.now() + 12 * 3600_000 };
       sessions.set(digest(token), session); saveSessions();
-      audit('exam.sso.login', user.id, user.id);
       return json(res, { token, ...current(session) });
     }
     if (route === '/api/login' && req.method === 'POST') {
-      if (!demo) throw new HttpError(403, 'Войдите через KU Portal');
       const body = await readJson(req, 4096);
       const login = String(body.login || '').trim().toLowerCase(), ip = clientIp(req);
       if (loginLimit.blocked(ip) || accountLimit.blocked(login)) throw new HttpError(429, 'Слишком много попыток');
       const releaseIp = loginLimit.reserve(ip), releaseAccount = accountLimit.reserve(login);
       const user = uidByLogin(login);
       const hash = user?.passHash;
-      const ok = typeof body.password === 'string' && body.password.length <= 256 && await checkPassword(hash ? user : dummy, body.password);
+      const ok = user?.authSource !== 'portal' && typeof body.password === 'string' && body.password.length <= 256 && await checkPassword(hash ? user : dummy, body.password);
       if (!ok || !hash || db.users.get(user.id)?.passHash !== hash) throw new HttpError(401, 'Неверный логин или пароль');
       releaseIp(); releaseAccount();
       const token = crypto.randomBytes(32).toString('hex');
@@ -247,22 +251,15 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
       streams.set(res, token); res.on('close', () => streams.delete(res)); return true;
     }
     if (req.method !== 'POST') throw new HttpError(404, 'Не найдено');
-    const limit = { '/api/sync': 5 * 1024 * 1024, '/api/attempt': 1_000_000, '/api/writing': 500_000 };
+    const syncLimit = (+process.env.EXAM_MAX_BODY_MB > 0 ? +process.env.EXAM_MAX_BODY_MB : 32) * 1024 * 1024;
+    const limit = { '/api/sync': syncLimit, '/api/attempt': 1_000_000, '/api/writing': 500_000 };
     const body = await readJson(req, limit[route] || 8192);
     requireSession(token);
     if (route === '/api/logout') { sessions.delete(token); saveSessions(); return json(res, { ok: true }); }
     if (route === '/api/grade-lock') { s.gradingUntil = 0; return json(res, { gradingUntil: 0 }); }
     if (route === '/api/password' || route === '/api/grade-unlock') {
-      if (route === '/api/password' && !demo) throw new HttpError(403, 'Пароль Online Exam управляется в KU Portal');
-      if (s.portalId) {
-        if (route === '/api/password') throw new HttpError(403, 'Пароль Online Exam управляется в KU Portal');
-        const release = passwordLimit.reserve(user.id);
-        if (!release) throw new HttpError(429, 'Слишком много попыток');
-        if (user.role !== 'teacher' || typeof verifyPortalReauth !== 'function' ||
-            !await verifyPortalReauth(s.portalId, body.password, body.code)) throw new HttpError(403, 'Не удалось подтвердить вход портала');
-        release();
-      } else await requirePassword(user, body.password);
-      requireSession(token);
+      if (route === '/api/password' && user.authSource === 'portal') throw new HttpError(403, 'Пароль этого аккаунта меняется в KU Portal');
+      await requirePassword(user, body.password, s); requireSession(token);
       if (route === '/api/grade-unlock') {
         if (user.role !== 'teacher') throw new HttpError(403, 'Нет доступа');
         s.gradingUntil = Date.now() + 3600_000; return json(res, { gradingUntil: s.gradingUntil });
@@ -276,8 +273,8 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
       return json(res, { ok: true });
     }
     if (route === '/api/student') {
-      if (!demo) throw new HttpError(403, 'Студенческие аккаунты создаются только в KU Portal');
       if (user.role !== 'teacher') throw new HttpError(403, 'Нет доступа');
+      if (user.authSource === 'portal') throw new HttpError(403, 'Создавайте и подтверждайте аккаунты через KU Portal');
       const id = body.id || crypto.randomUUID(), old = db.users.get(id);
       if (!validId(id) || (body.id && old?.role !== 'student')) throw new HttpError(400, 'Студент не найден');
       const login = String(body.login || '').trim().toLowerCase(), name = String(body.name || '').trim();
@@ -297,8 +294,8 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
     const next = nextDb(), now = Date.now();
     let result = {};
     if (route === '/api/student/delete') {
-      if (!demo) throw new HttpError(403, 'Студенты управляются в KU Portal');
       if (user.role !== 'teacher' || db.users.get(body.id)?.role !== 'student') throw new HttpError(403, 'Нет доступа');
+      if (user.authSource === 'portal') throw new HttpError(403, 'Управление аккаунтами выполняется в KU Portal');
       next.users.delete(body.id);
       for (const col of ['attempts', 'grades', 'queue', 'writings', 'timers']) {
         for (const [key, row] of next[col]) if (row.userId === body.id) next[col].delete(key);
@@ -315,11 +312,17 @@ function createExamSync({ base = '/exam-sync', dataFile, demo = false, seedFile 
     if (route === '/api/sync' && body.changes.grades) audit('exam.grades', user.id, 'grades');
     return json(res, { ...current(s), ...result });
   }
-  handle.openRooms = user => [...db.rooms.values()].filter(r => {
-    if (!r.open || !Array.isArray(r.groups) || !r.groups.length) return !!r.open;
-    if (user?.role === 'teacher') return r.groups.every(g => (user.groups || []).includes(g));
-    return r.groups.includes(user?.group);
-  }).map(r => ({ id: r.id, title: r.title }));
+  handle.openRooms = user => [...db.rooms.values()].filter(room => {
+    if (!room.open) return false;
+    const groups = Array.isArray(room.groups) && room.groups.length ? room.groups
+      : Array.isArray(room.subgroups) ? room.subgroups : [];
+    if (user?.role === 'teacher') {
+      const assigned = new Set((Array.isArray(user.groups) ? user.groups : []).map(canonicalGroup));
+      return groups.length ? groups.some(group => assigned.has(canonicalGroup(group))) : room.ownerId === user.id;
+    }
+    if (!groups.length) return true;
+    return groups.some(group => canonicalGroup(group) === canonicalGroup(user?.group));
+  }).map(room => ({ id: room.id, title: room.title }));
   return handle;
 }
 

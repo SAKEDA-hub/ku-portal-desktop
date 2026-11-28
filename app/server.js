@@ -1,6 +1,6 @@
 /*
  * KU Portal — сервер без внешних зависимостей (Node.js >= 18). Точка входа (alwaysdata запускает node server.js).
- * Здесь: база (data/db.json), управляемые учётные записи, вход и сеансы, общие справочники, статика, маршрутизация запросов.
+ * Здесь: база (data/db.json), регистрация, вход и сеансы, общие справочники, статика, маршрутизация запросов.
  * Модули server/: account.js (настройки, 2FA, сеансы, удаление), study.js (расписание, оценки, рейтинг), admin.js (админ-панель),
  * recovery.js + mail.js (восстановление пароля), polls.js (голосование), messages.js (KU Message + файлы), clubs.js, dorm.js,
  * cleanup.js, demo.js (бета-аккаунты), ai.js (помощник для сайта университета).
@@ -20,14 +20,14 @@ const MESSAGE_DIR = path.join(ROOT, 'ku-message'); // KU Message — мессе�
 const RESULTS_DIR = path.join(ROOT, 'results'); // закрытый кабинет результатов учебной базы (/results/)
 const ADMIN_DIR = path.join(ROOT, 'admin'); // админ-панель (/admin/, server/admin.js)
 const { dataDir: DATA, grantOf, groupsOf, setGroups, permsOf, forget, demo: DEMO_ON } = require('./server/access');
-const { clientIp, readJson, HttpError, sendStatic, deviceLabel, resolveStaticFile, HTTP_LIMITS, configureHttpServer } = require('./server/http');
+const { clientIp, readJson, HttpError, sendStatic, deviceLabel } = require('./server/http');
 const { totpOk, codeBlocked, codeFail, codeReset } = require('./server/totp');
 const audit = require('./server/audit').createAudit(DATA);
 const DB_FILE = path.join(DATA, 'db.json');
 const { createStore } = require('./server/store');
 const sec = require('./server/security');
 
-sec.secureDataDirectory(DATA);
+fs.mkdirSync(DATA, { recursive: true, mode: 0o700 });
 
 /* Версия кода, с которой запущен сервер (для проверки, что автообновление перезапустило сервер): /api/version.
    Читается из .git один раз при старте; git на машине сайта не нужен. */
@@ -76,7 +76,9 @@ function migrateTeacherGroups() {
     catch (error) { console.error('[access] группы не перенесены:', t.id, error.code || error.message); }
   }
 }
+const GROUPS = require('./server/groups'); // справочник групп: ИСУ и БТ, наборы 2023–2026, по 3 группы
 const teacherHasGroup = (u, group) => (groupsOf(u) || []).includes(String(group).trim());
+const teacherGroups = (u) => [...new Set(groupsOf(u) || [])].sort(); // группы, закреплённые администратором
 function nid(prefix) {
   db.seq = db.seq || {};
   db.seq[prefix] = (db.seq[prefix] || 0) + 1;
@@ -137,12 +139,11 @@ function ok(res, obj) { send(res, 200, obj || { ok: true }); }
    перебора с разных адресов (кроме бета-аккаунтов: их пароль и так публичный), по IP — общий (у кампуса общий IP — лимит выше);
    регистрация — по IP; ввод пароля для смены пароля / отключения 2FA / удаления аккаунта — по пользователю */
 const LIMIT_MS = 15 * 60 * 1000;
-const loginByIdentifierIp = sec.createLimiter({ max: 8, windowMs: LIMIT_MS });
-const loginByIdentifier = sec.createLimiter({ max: 40, windowMs: LIMIT_MS });
-const loginByAccount = sec.createLimiter({ max: 40, windowMs: LIMIT_MS });
+const loginByEmailIp = sec.createLimiter({ max: 8, windowMs: LIMIT_MS });
+const loginByEmail = sec.createLimiter({ max: 40, windowMs: LIMIT_MS });
 const loginByIp = sec.createLimiter({ max: 60, windowMs: LIMIT_MS });
+const registerByIp = sec.createLimiter({ max: 10, windowMs: 60 * 60 * 1000 });
 const passCheckByUser = sec.createLimiter({ max: 8, windowMs: LIMIT_MS });
-const registerByIp = sec.createLimiter({ max: 10, windowMs: LIMIT_MS }); // тестовый интеграционный маршрут; рабочая регистрация отключена
 const TOO_MANY_LOGINS = 'Слишком много попыток входа. Попробуйте через 15 минут';
 const TOO_MANY_PASS = 'Слишком много попыток. Попробуйте через 15 минут';
 const PASS_SHORT = 'Пароль — минимум 8 символов';
@@ -246,7 +247,7 @@ function pushInbox(user, item) {
 
 /* Программа (университет) пользователя — от неё зависят цвета портала и онлайн-экзамена */
 const PROGRAMS = ['ku', 'arizona'];
-/* Основные роли: студент, преподаватель, сотрудник (служебные права назначает оператор) */
+/* Роли при регистрации: студент, преподаватель, сотрудник (менеджер, руководитель клуба — права назначает оператор) */
 const ROLES = ['student', 'teacher', 'staff'];
 const ROLE_PREFIX = { student: 'std', teacher: 'tch', staff: 'stf' };
 const programOf = (u) => (u && PROGRAMS.includes(u.program) ? u.program : 'ku');
@@ -339,6 +340,7 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 };
@@ -359,54 +361,69 @@ function serveStatic(req, res, url) {
   const file = path.join(root, p);
   const relative = path.relative(root, file);
   if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) { res.writeHead(403); res.end(); return; }
-  const safeFile = resolveStaticFile(root, file);
-  if (!safeFile) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404'); return; }
-  fs.readFile(safeFile, (e, buf) => {
+  fs.readFile(file, (e, buf) => {
     if (e) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404'); return; }
-    const mime = MIME[path.extname(safeFile).toLowerCase()] || 'application/octet-stream';
+    const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
     if (mime.startsWith('text/html')) res.setHeader('Content-Security-Policy', sec.htmlPolicy(buf));
-    const noCache = /\.(html|js|css)$/i.test(safeFile) ? { 'Cache-Control': 'no-cache' }
-      : /\.woff2$/i.test(safeFile) ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {};
-    sendStatic(req, res, safeFile, buf, Object.assign({ 'Content-Type': mime }, noCache));
+    const noCache = /\.(html|js|css)$/i.test(file) ? { 'Cache-Control': 'no-cache' }
+      : /\.woff2$/i.test(file) ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {};
+    sendStatic(req, res, file, buf, Object.assign({ 'Content-Type': mime }, noCache));
   });
 }
 
 /* --------------------------------- API ----------------------------------- */
 
-/* «Онлайн-экзамен» (github.com/StephCurrysvg/exam-sync) — отдельное приложение под /exam-sync/,
-   раздел «Экзамен» портала (public/app.js, viewExam) ведёт сюда */
+const examHandoffCodes = new Map(); // одноразовый SSO-код KU Portal → онлайн-экзамен
+const portalExamUser = user => user && ({ id: user.id, fio: user.fio, login: user.login || '', email: user.email || '', role: user.role, group: user.group || '', groups: user.role === 'teacher' ? groupsOf(user) || [] : [] });
+function portalSessionForExam(sessionKey) {
+  const user = sessions.get(sessionKey), meta = db.sessMeta && db.sessMeta[sessionKey];
+  if (!user || !meta || sessionExpired(sessionKey, Date.now())) return null;
+  const grant = grantOf(user);
+  return grant && meta.grant === grant ? user : null;
+}
+function portalExamAccounts() {
+  return db.users.filter(user => ['student', 'teacher'].includes(user.role) && grantOf(user))
+    .map(portalExamUser).filter(Boolean);
+}
+async function resolveExamHandoff(code) {
+  const item = examHandoffCodes.get(code);
+  examHandoffCodes.delete(code);
+  if (!item || item.expires <= Date.now()) return null;
+  const user = portalSessionForExam(item.session);
+  if (!user || user.mustChangePassword || !['student', 'teacher'].includes(user.role)) return null;
+  return { user: portalExamUser(user), sessionId: item.session, accounts: portalExamAccounts() };
+}
+function verifyExamPortalPassword(sessionKey, password) {
+  const user = portalSessionForExam(sessionKey);
+  return !!user && typeof password === 'string' && sec.checkPassword(user, password);
+}
+
+/* --------------------------------- API ----------------------------------- */
+
+/* Онлайн-экзамен — приложение под /exam-sync/; вход получает аккаунт портала через одноразовый SSO-код. */
 const examSync = require('./exam-sync/handler').createExamSync({
   base: '/exam-sync', dataFile: path.join(DATA, 'exam-sync.json'), demo: DEMO_ON,
-  redeemPortalCode: code => redeemHandoffCode(code, 'exam'),
-  portalUserById: id => {
-    const user = db.users.find(x => x.id === id);
-    return user && grantOf(user) ? { ...pubUser(user), authVersion: user.passChangedAt || 0 } : null;
-  },
-  verifyPortalReauth: async (id, password, code) => {
-    const user = db.users.find(x => x.id === id);
-    if (!user || !grantOf(user) || !await sec.checkPassword(user, password)) return false;
-    if (!user.totp?.enabled) return true;
-    if (codeBlocked(user.id)) return false;
-    if (!totpOk(user.totp.secret, code)) { codeFail(user.id); return false; }
-    codeReset(user.id);
-    return true;
-  },
+  resolvePortalHandoff: resolveExamHandoff,
+  validatePortalSession: sessionKey => !!portalSessionForExam(sessionKey),
+  verifyPortalPassword: verifyExamPortalPassword,
+  getPortalAccounts: portalExamAccounts,
 });
 /* Учебная база результатов — только преподаватели и администрация (право results); студентам и руководителям клубов закрыта */
 function resultsAccess(u) {
   if (!u || !grantOf(u)) return null;
-  return { id: u.id, fio: u.fio, role: u.role === 'teacher' ? 'teacher' : permsOf(u).results ? 'admin' : null,
-    authVersion: u.passChangedAt || 0 };
+  // учебная база — только по праву «учебная база» (ревью п.6: у преподавателей по умолчанию её нет)
+  return { id: u.id, fio: u.fio, role: u.role, perms: permsOf(u), authVersion: u.authVersion };
 }
 const results = require('./server/results').createResults({ dataDir: DATA, portal: {
   fromRequest: req => resultsAccess(userOf(req)),
   byId: id => resultsAccess(db.users.find(x => x.id === id)),
 } });
 /* Модули API: KU Message и файлы, клубы, общежитие (server/). Каждый возвращает false, если запрос не его. */
-const moduleCtx = { getDB: () => db, saveDB, nid, ok, bad, isOnline, settingsOf, pushInbox, subjName, teacherFio, DATA, permsOf, markDirty: () => { dbDirty = true; } };
+const moduleCtx = { getDB: () => db, saveDB, nid, ok, bad, isOnline, settingsOf, pushInbox, subjName, teacherFio, DATA, permsOf, teacherGroups, markDirty: () => { dbDirty = true; } };
 const { createMessages, MAX_FILE_BYTES } = require('./server/messages');
+const help = require('./server/help').createHelp(moduleCtx); // помощь преподавателю: обращения к администрации (server/help.js)
 const apiModules = [createMessages(moduleCtx), require('./server/clubs').createClubs(moduleCtx), require('./server/dorm').createDorm(moduleCtx),
-  require('./server/polls').createPolls(Object.assign({ audit }, moduleCtx))]; // голосование (server/polls.js)
+  require('./server/polls').createPolls(Object.assign({ audit }, moduleCtx)), help.handle]; // голосование (server/polls.js)
 /* Админ-панель (server/admin.js): пользователи, допуск, права, сброс пароля, копия базы — право admin */
 /* Восстановление пароля по почте (server/recovery.js, письма — server/mail.js) */
 const recovery = require('./server/recovery').createRecovery({ getDB: () => db, saveDB, ok, bad, sec, audit, grantOf, clientIp, dropUserSessions });
@@ -414,33 +431,13 @@ const recovery = require('./server/recovery').createRecovery({ getDB: () => db, 
 const account = require('./server/account').createAccount({ getDB: () => db, saveDB, ok, bad, sec, audit, passError, reqToken, dropSession, dropUserSessions,
   pubUser, settingsOf, SETTING_DEFAULTS, SETTING_TEXT_MAX, PASS_SHORT, subjName, teacherFio, WEEKDAYS });
 const study = require('./server/study').createStudy({ getDB: () => db, saveDB, ok, bad, audit, nid, isOnline, settingsOf, pushInbox, subjName, teacherFio,
-  avgOf, nextLesson, detectDiscipline, teacherHasGroup, WEEKDAYS });
-const admin = require('./server/admin').createAdmin({ getDB: () => db, saveDB, ok, bad, sec, audit, passError, reqToken, dropUserSessions, isOnline, DATA,
-  clearRotationBackups: () => { store.clearBackups(); store.save(db); } });
-if (!DEMO_ON && process.env.NODE_ENV !== 'test' && String(process.env.KU_DB_DRIVER || 'json').toLowerCase() === 'mysql') {
-  require('./server/admin').stageBundledRotations({ DATA, bundleDir:path.join(ROOT, 'deploy', 'account-rotation') });
-}
+  avgOf, nextLesson, detectDiscipline, teacherHasGroup, teacherGroups, WEEKDAYS });
+const admin = require('./server/admin').createAdmin({ getDB: () => db, saveDB, ok, bad, sec, audit, passError, reqToken, dropUserSessions, isOnline, DATA, help,
+  clearRotationBackups: () => store.clearBackups() });
 const MUST_CHANGE_ALLOWED = new Set(['/api/auth/password', '/api/settings', '/api/sessions', '/api/inbox']);
 const publicAIRate = sec.createLimiter({ max: 30, windowMs: 60_000 });
-const publicAIConcurrency = sec.createConcurrencyLimiter(3); // ограничиваем нагрузку на локальную модель даже при запросах с разных IP
-const handoffCodes = new Map(); // одноразовый код привязан к конкретному сервису и портальному сеансу
+const handoffCodes = new Map(); // одноразовые коды перехода в KU Message: code → { uid, exp }
 const HANDOFF_CODE_MS = 60 * 1000;
-function createHandoffCode(session, service) {
-  const now = Date.now();
-  for (const [key, item] of handoffCodes) if (item.exp <= now || (item.session === session && item.service === service)) handoffCodes.delete(key);
-  const code = crypto.randomBytes(24).toString('hex');
-  handoffCodes.set(code, { session, service, exp: now + HANDOFF_CODE_MS });
-  return code;
-}
-function redeemHandoffCode(code, service) {
-  const item = handoffCodes.get(String(code || ''));
-  handoffCodes.delete(String(code || ''));
-  if (!item || item.service !== service || Date.now() >= item.exp) return null;
-  const user = sessions.get(item.session);
-  const grant = user && grantOf(user);
-  if (!grant || sessionExpired(item.session, Date.now()) || db.sessMeta[item.session]?.grant !== grant) return null;
-  return pubUser(user);
-}
 const PAGES_ORIGINS = new Set((process.env.PAGES_ORIGINS || 'https://sakeda-hub.github.io').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean));
 
 function allowPublicAI(req) {
@@ -489,7 +486,7 @@ async function handleRequest(req, res) {
 
   // «Онлайн-экзамен» (exam-sync), встроенный в портал: /exam-sync/...
   if (await examSync(req, res)) return;
-  // Учебная база результатов: вход только через общую учётную запись KU Portal.
+  // Отдельная учебная база: собственный вход и роли, независимые от портала/экзамена.
   if (p.startsWith('/api/results/')) {
     const limit = p === '/api/results/test-file' ? Math.ceil(5 * 1024 * 1024 * 1.5) + 100_000 : 1e6;
     if (Number(req.headers['content-length'] || 0) > limit) { res.setHeader('Connection', 'close'); return bad(res, 413, 'Слишком большой запрос'); }
@@ -507,27 +504,45 @@ async function handleRequest(req, res) {
     /* ---------- Аутентификация ---------- */
     if (await recovery(p, req, res, body)) return;
     if (p === '/api/auth/register' && req.method === 'POST') {
-      if (process.env.NODE_ENV !== 'test') return bad(res, 403, 'Самостоятельная регистрация отключена. Обратитесь к администратору портала');
       const { lastName = '', firstName = '', middleName = '', email = '', password = '', role = 'student', group = '', program = 'ku' } = body;
-      if (![lastName, firstName, middleName, group].every(v => typeof v === 'string' && v.length <= 100) || !lastName.trim() || !firstName.trim()) return bad(res, 400, 'Укажите фамилию и имя');
-      if (typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 256 || !/^\S+@\S+\.\S+$/.test(email)) return bad(res, 400, 'Некорректные данные');
+      if (![lastName, firstName, middleName, group].every(v => typeof v === 'string' && v.length <= 100) ||
+          !lastName.trim() || !firstName.trim()) return bad(res, 400, 'Укажите фамилию и имя');
+      if (typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 256) return bad(res, 400, 'Некорректные данные');
+      if (!/^\S+@\S+\.\S+$/.test(email)) return bad(res, 400, 'Некорректный email');
       if (registerByIp.blocked(clientIp(req))) return bad(res, 429, 'Слишком много регистраций с этого адреса. Попробуйте позже');
-      if (password.length < sec.PASSWORD_MIN) return bad(res, 400, PASS_SHORT);
-      if (!ROLES.includes(role) || !PROGRAMS.includes(program) || (role === 'student' && !group.trim())) return bad(res, 400, 'Некорректная роль, программа или группа');
-      const em = email.trim().toLowerCase();
-      if (db.users.some(x => x.email === em)) return bad(res, 400, 'Такой email уже зарегистрирован');
+      if (String(password).length < sec.PASSWORD_MIN) return bad(res, 400, PASS_SHORT);
+      if (!ROLES.includes(role)) return bad(res, 400, 'Выберите роль');
+      if (!PROGRAMS.includes(program)) return bad(res, 400, 'Выберите программу');
+      if (role === 'student' && !String(group).trim()) return bad(res, 400, 'Укажите группу');
+      // новая регистрация студента — только группа из справочника (ИСУ2025-2 и т.п.); прежние группы у старых студентов остаются
+      if (role === 'student' && !GROUPS.isCatalogGroup(group)) return bad(res, 400, 'Выберите группу из списка');
+      const em = String(email).trim().toLowerCase();
       registerByIp.hit(clientIp(req));
-      const user = { id:nid(ROLE_PREFIX[role]), role, fio:[lastName, firstName, middleName].filter(Boolean).map(s => s.trim()).join(' '),
-        firstName:firstName.trim(), email:em, group:role === 'student' ? group.trim() : '', program, createdAt:Date.now() };
-      assignUsername(user, new Set(db.users.map(x => String(x.login || '').toUpperCase())));
+      if (db.users.some((x) => x.email === em)) {
+        // Same status/body and one scrypt operation as a new account: don't expose whether an address exists.
+        await sec.checkPassword(NO_USER, String(password));
+        return send(res, 202, { pending: true });
+      }
+      const fio = [lastName, firstName, middleName].filter(Boolean).map((s) => String(s).trim()).join(' ');
+      const user = {
+        id: nid(ROLE_PREFIX[role]),
+        role, fio, firstName: String(firstName).trim(), email: em,
+        group: role === 'student' ? String(group).trim() : '',
+        program,
+        createdAt: Date.now(),
+      };
       if (body.deviceId) user.devices = [String(body.deviceId).slice(0, 64)];
-      await sec.setPassword(user, password);
-      if (db.users.some(x => x.email === em)) return bad(res, 400, 'Такой email уже зарегистрирован');
+      await sec.setPassword(user, String(password));
+      // повторная проверка после await: два одновременных запроса с одним email не создадут дубль
+      if (db.users.some((x) => x.email === em)) return bad(res, 400, 'Такой email уже зарегистрирован');
       db.users.push(user); saveDB();
       const grant = grantOf(user);
-      if (!grant) return send(res, 202, { pending:true });
+      if (!grant) {
+        console.info('[access] registration.pending', user.id);
+        return send(res, 202, { pending: true });
+      }
       const token = saveSession(user, req, grant);
-      return ok(res, { token, user:pubUser(user) });
+      return ok(res, { token, user: pubUser(user) });
     }
 
     if (p === '/api/auth/login' && req.method === 'POST') {
@@ -543,21 +558,15 @@ async function handleRequest(req, res) {
         ? db.users.find(x => String(x.email || '').toLowerCase() === identifier)
         : db.users.find(x => String(x.login || '').toUpperCase() === identifier));
       const eligible = user && (!user.demo || DEMO_ON);
-      const accountKey = eligible ? user.id : '';
-      if (loginByIdentifierIp.blocked(identifierIp) || loginByIp.blocked(ip) || loginByIdentifier.blocked(identifier) || (accountKey && loginByAccount.blocked(accountKey))) return bad(res, 429, TOO_MANY_LOGINS);
-      const releasePair = loginByIdentifierIp.reserve(identifierIp), releaseIp = loginByIp.reserve(ip);
-      const releaseIdentifier = loginByIdentifier.reserve(identifier);
-      const releaseAccount = accountKey && loginByAccount.reserve(accountKey);
-      if (accountKey && !releaseAccount) {
-        releasePair(); releaseIp(); if (releaseIdentifier) releaseIdentifier();
-        return bad(res, 429, TOO_MANY_LOGINS);
-      }
+      if (loginByEmailIp.blocked(identifierIp) || loginByIp.blocked(ip) || loginByEmail.blocked(identifier)) return bad(res, 429, TOO_MANY_LOGINS);
+      const releasePair = loginByEmailIp.reserve(identifierIp), releaseIp = loginByIp.reserve(ip);
+      const releaseIdentifier = loginByEmail.reserve(identifier);
       const passHash = eligible && user.passHash;
       const passOk = await sec.checkPassword(eligible ? user : NO_USER, password);
       if (!eligible || !passOk || user.passHash !== passHash || !db.users.includes(user)) {
         return bad(res, 401, 'Неверный логин или email или пароль');
       }
-      releasePair(); releaseIp(); if (releaseIdentifier) releaseIdentifier(); if (releaseAccount) releaseAccount();
+      releasePair(); releaseIp(); if (releaseIdentifier) releaseIdentifier();
       if (user.mustChangePassword && Date.now() > (user.tempPasswordUntil || 0)) return bad(res, 401, 'Временный пароль истёк. Попросите администратора сбросить пароль ещё раз');
       const grant = grantOf(user);
       if (!grant) return bad(res, 403, 'Доступ ожидает подтверждения администратором');
@@ -595,20 +604,35 @@ async function handleRequest(req, res) {
       return ok(res);
     }
 
+    if (p === '/api/exam/handoff' && req.method === 'POST') {
+      if (!u) return bad(res, 401, 'Войдите в KU Portal');
+      if (!grantOf(u)) return bad(res, 403, 'Доступ к порталу не подтверждён');
+      if (u.mustChangePassword) return bad(res, 403, 'Сначала задайте постоянный пароль в KU Portal');
+      if (!['student', 'teacher'].includes(u.role)) return bad(res, 403, 'Онлайн-экзамен доступен студентам и преподавателям');
+      for (const [key, value] of examHandoffCodes) if (value.expires <= Date.now()) examHandoffCodes.delete(key);
+      const code = crypto.randomBytes(24).toString('hex');
+      examHandoffCodes.set(code, { session: reqToken(req), expires: Date.now() + HANDOFF_CODE_MS });
+      return ok(res, { code });
+    }
+
     /* Переход в KU Message без повторного входа: портал получает одноразовый код (60 с) и передаёт его
        в адресе после # (на сервер такой адрес не уходит); KU Message обменивает код на свой сеанс. */
     if (p === '/api/message/redeem' && req.method === 'POST') {
       const c = handoffCodes.get(String(body.code || ''));
       handoffCodes.delete(String(body.code || ''));
-      const user = c && c.service === 'message' && Date.now() < c.exp && sessions.get(c.session);
+      const user = c && Date.now() < c.exp && sessions.get(c.session);
       const grant = user && grantOf(user);
-      if (!grant || sessionExpired(c.session, Date.now()) || db.sessMeta[c.session]?.grant !== grant) return bad(res, 401, 'Ссылка для входа устарела — откройте KU Message из портала ещё раз');
+      if (!grant || sessionExpired(c.session, Date.now()) || db.sessMeta[c.session].grant !== grant) return bad(res, 401, 'Ссылка для входа устарела — откройте KU Message из портала ещё раз');
       const token = saveSession(user, req, grant);
       return ok(res, { token, user: pubUser(user) });
     }
 
     if (p === '/api/version' && req.method === 'GET') {
       return ok(res, VERSION);
+    }
+    // справочник групп для формы регистрации (до входа) — server/groups.js
+    if (p === '/api/groups' && req.method === 'GET') {
+      return ok(res, { directions: GROUPS.DIRECTIONS, years: GROUPS.YEARS, groups: GROUPS.GROUP_CATALOG });
     }
 
     if (p === '/api/demo' && req.method === 'GET') {
@@ -625,8 +649,6 @@ async function handleRequest(req, res) {
       if (!allowPublicAI(req)) return bad(res, 429, 'Слишком много запросов. Попробуйте позже.');
       const q = String(body.message || '').trim().slice(0, 1000);
       if (!q) return bad(res, 400, 'Пустой вопрос');
-      const releaseAI = publicAIConcurrency.reserve();
-      if (!releaseAI) return bad(res, 429, 'Модель сейчас обрабатывает несколько запросов. Попробуйте позже.');
       try {
         const r = await ai.aiReply(q);
         return ok(res, r);
@@ -637,7 +659,7 @@ async function handleRequest(req, res) {
           reply: 'Модель Gemma сейчас недоступна. Проверьте, что LM Studio запущена и сервер доступен порталу.',
           src: 'offline',
         });
-      } finally { releaseAI(); }
+      }
     }
 
     if (!u) return bad(res, 401, 'Не авторизован');
@@ -649,10 +671,13 @@ async function handleRequest(req, res) {
     if (await admin.handle(p, req, res, u, body) !== false) return;
     for (const handle of apiModules) if (await handle(p, req, res, u, body, url) !== false) return;
 
-    if (p === '/api/message/handoff' && req.method === 'POST') return ok(res, { code: createHandoffCode(reqToken(req), 'message') });
-    if (p === '/api/exam/handoff' && req.method === 'POST') {
-      if (!['student', 'teacher'].includes(u.role) && !(u.role === 'staff' && permsOf(u).admin)) return bad(res, 403, 'Нет доступа к онлайн-экзамену');
-      return ok(res, { code: createHandoffCode(reqToken(req), 'exam') });
+    if (p === '/api/message/handoff' && req.method === 'POST') {
+      const now = Date.now();
+      const session = reqToken(req);
+      for (const [k, v] of handoffCodes) if (v.exp <= now || v.session === session) handoffCodes.delete(k);
+      const code = crypto.randomBytes(18).toString('hex');
+      handoffCodes.set(code, { session, exp: now + HANDOFF_CODE_MS });
+      return ok(res, { code });
     }
 
     if (await account(p, req, res, u, body) !== false) return; // server/account.js
@@ -661,7 +686,7 @@ async function handleRequest(req, res) {
     return bad(res, 404, 'Не найдено');
 }
 
-const server = configureHttpServer(http.createServer({ maxHeaderSize: HTTP_LIMITS.maxHeaderSize }, (req, res) => {
+const server = http.createServer((req, res) => {
   handleRequest(req, res).catch(error => {
     const expected = error instanceof HttpError;
     if (!expected) console.error('[API]', req.method, error.message);
@@ -669,7 +694,7 @@ const server = configureHttpServer(http.createServer({ maxHeaderSize: HTTP_LIMIT
     if (error.status === 413) res.setHeader('Connection', 'close');
     bad(res, expected ? error.status : 500, expected ? error.message : 'Внутренняя ошибка');
   });
-}));
+});
 
 /* -------------------------------- Старт ---------------------------------- */
 
@@ -687,8 +712,8 @@ function purgeDemoAccounts() {
 }
 purgeDemoAccounts();
 seedDemo();
-migrateUsernames();
 migrateTeacherGroups();
+migrateUsernames();
 loadSessions();
 admin.applyProvision();
 setInterval(admin.applyProvision, 5000).unref(); // сброс пароля командой с хоста (scripts/access.js reset-password)

@@ -125,25 +125,13 @@ async function syncStart() {
   sessionStorage.removeItem('edu-exam-session');
   const info = await examApi('info');
   SYNC.demo = info.demo;
-  const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''));
-  let ssoCode = hashParams.get('sso');
-  if (ssoCode) history.replaceState(history.state, '', location.pathname + location.search);
-  // A portal session on this same origin can request a fresh, one-use exchange code.
-  // The portal bearer itself is never sent to the exam service.
-  if (!ssoCode) {
-    try {
-      const portalToken = localStorage.getItem('ku_token');
-      if (portalToken) {
-        const response = await fetch('/api/exam/handoff', { method: 'POST', headers: { Authorization: 'Bearer ' + portalToken, 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' });
-        if (response.ok) ssoCode = (await response.json()).code;
-      }
-    } catch { /* direct visit without an active portal session */ }
-  }
-  if (ssoCode) {
+  const portalCode = new URLSearchParams(location.hash.slice(1)).get('portal');
+  if (portalCode) {
+    history.replaceState(null, '', location.pathname + location.search);
     rememberToken('');
-    sessionStorage.removeItem('edu-api-token'); // all previous exam sessions were revoked during the account migration
-    const state = await examApi('sso/redeem', { code: ssoCode });
-    rememberToken(state.token); applyExamState(state); enterExam(); return;
+    const state = await examApi('portal/redeem', { code: portalCode });
+    rememberToken(state.token); applyExamState(state); enterExam();
+    return;
   }
   rememberToken(sessionStorage.getItem('edu-api-token') || '');
   if (SYNC.token) {
