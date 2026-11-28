@@ -1,0 +1,78 @@
+[
+  {
+    "name": "экран «Подключение» открывается при первом запуске",
+    "ok": true,
+    "fatal": true,
+    "result": {
+      "kinds": 3,
+      "site": "ku-portal.alwaysdata.net — аккаунты и данные как на сайте. Нужен интернет.",
+      "ver": "Версия 1.0.16"
+    }
+  },
+  {
+    "name": "подключение к компьютеру 10.0.2.2:3000 и сценарий портала",
+    "ok": true,
+    "fatal": true,
+    "result": {
+      "login": true,
+      "grades": 200,
+      "schedule": 200,
+      "ai": {
+        "online": false,
+        "model": "google/gemma-4-e4b",
+        "ctx": 1565,
+        "reason": "unreachable"
+      },
+      "aiReply": true,
+      "notification": "default",
+      "exam": true,
+      "examBack": true,
+      "notifOk": true
+    }
+  },
+  {
+    "name": "мост приложения подключён (KUApp, Notification)",
+    "ok": true,
+    "fatal": true,
+    "result": {
+      "bridge": true,
+      "app": "object",
+      "notif": "function",
+      "perm": "default"
+    }
+  },
+  {
+    "name": "разрешение на уведомления: до разрешения «default», после — «granted»",
+    "ok": true,
+    "fatal": true,
+    "result": {
+      "sdk": 34,
+      "before": "default",
+      "after": "granted"
+    }
+  },
+  {
+    "name": "системное уведомление Android («Проверить уведомление» в кабинете)",
+    "ok": true,
+    "fatal": true,
+    "result": true
+  },
+  {
+    "name": "сохранение файла («Скачать мои данные» → системное окно «Сохранить»)",
+    "ok": true,
+    "fatal": true,
+    "result": true
+  },
+  {
+    "name": "онлайн-экзамен: прямой вход KU Portal и верхняя панель на узком экране",
+    "ok": true,
+    "fatal": true,
+    "result": {
+      "vw": 320,
+      "fix": true,
+      "items": 4,
+      "bad": [],
+      "page": 320
+    }
+  }
+]

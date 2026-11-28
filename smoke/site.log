@@ -1,0 +1,7 @@
+[AI] Загружена локальная база KU: 1565 фрагментов
+[accounts] назначены логины пользователям
+KU Portal: http://127.0.0.1:3000
+[startup] {"commit":null,"data":"/tmp/tmp.0GRo9oDV1X/data/demo","demo":true}
+[proxy] {"peer":"127.0.0.1","trusted":false,"forwardedProto":null,"headers":["accept","accept-encoding","connection","host","user-agent"]}
+[AI] LM Studio недоступна: fetch failed
+[AI] Запрос к LM Studio не выполнен: fetch failed

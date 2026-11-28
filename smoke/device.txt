@@ -1,0 +1,2 @@
+Android 14
+WebView versionName=113.0.5672.136
