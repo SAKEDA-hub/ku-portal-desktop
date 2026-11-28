@@ -1,0 +1,72 @@
+TAP version 13
+# Subtest: bridge.js содержит точную копию desktop/ui/app-fix.css
+ok 1 - bridge.js содержит точную копию desktop/ui/app-fix.css
+  ---
+  duration_ms: 1.797003
+  ...
+# Subtest: sanitize: значения по умолчанию и мусор
+ok 2 - sanitize: значения по умолчанию и мусор
+  ---
+  duration_ms: 1.789751
+  ...
+# Subtest: store: ключ LM Studio хранится зашифрованным
+ok 3 - store: ключ LM Studio хранится зашифрованным
+  ---
+  duration_ms: 1.24457
+  ...
+# Subtest: store: без хранилища ключей и с битым файлом
+ok 4 - store: без хранилища ключей и с битым файлом
+  ---
+  duration_ms: 0.64559
+  ...
+# Subtest: needsRestart
+ok 5 - needsRestart
+  ---
+  duration_ms: 0.198696
+  ...
+# [server] [AI] Загружена локальная база KU: 1565 фрагментов
+# [server] [accounts] назначены логины пользователям
+# [server] KU Portal: http://127.0.0.1:3870
+# [server] [startup] {"commit":null,"data":"/tmp/kudesk-6g8Eqh/portal/data/demo","demo":true}
+# [server] [proxy] {"peer":"127.0.0.1","trusted":false,"forwardedProto":null,"headers":["accept","accept-encoding","accept-language","connection","host","sec-fetch-mode","user-agent"]}
+# [desktop] встроенный сервер: http://127.0.0.1:3870/
+# [server] [AI] LM Studio недоступна: fetch failed
+# Subtest: desktop main: встроенный сервер и окно
+ok 6 - desktop main: встроенный сервер и окно
+  ---
+  duration_ms: 1227.533629
+  ...
+# Subtest: desktop main: окно настроек и IPC
+ok 7 - desktop main: окно настроек и IPC
+  ---
+  duration_ms: 10.225535
+  ...
+# Subtest: desktop main: сигнал «вызов на speaking» мигает значком, только от окна портала
+ok 8 - desktop main: сигнал «вызов на speaking» мигает значком, только от окна портала
+  ---
+  duration_ms: 0.503478
+  ...
+# Subtest: desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе
+ok 9 - desktop main: данные сохраняются при повторной копии сайта, сервер останавливается при выходе
+  ---
+  duration_ms: 301.089099
+  ...
+# Subtest: app/ совпадает с сайтом: нет следов патчей
+ok 10 - app/ совпадает с сайтом: нет следов патчей
+  ---
+  duration_ms: 1.359161
+  ...
+# Subtest: сервер из копии: вход, онлайн-экзамен, статус AI, данные рядом с копией
+ok 11 - сервер из копии: вход, онлайн-экзамен, статус AI, данные рядом с копией
+  ---
+  duration_ms: 1046.254301
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1645.505446
