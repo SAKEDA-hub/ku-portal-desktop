@@ -1,0 +1,18 @@
+[2903:1128/122524.466592:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2903:1128/122524.466993:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2903:1128/122524.467013:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2903:1128/122524.467042:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2903:1128/122524.467053:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:38659/devtools/browser/2a2d3b0e-2701-4d18-97f0-dc7dd02bc9fa
+[2931:1128/122524.561701:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+[2971:1128/122524.724369:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+[server] [AI] Загружена локальная база KU: 1565 фрагментов
+[server] [accounts] назначены логины пользователям
+[server] KU Portal: http://127.0.0.1:42211
+[server] [startup] {"commit":null,"data":"/tmp/ku-ud-QmWOAr/portal/data/demo","demo":true}
+[server] [proxy] {"peer":"127.0.0.1","trusted":false,"forwardedProto":null,"headers":["accept","accept-encoding","accept-language","connection","host","sec-fetch-mode","user-agent"]}
+[desktop] встроенный сервер: http://127.0.0.1:42211/
+[2903:1128/122526.150291:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[server] [AI] LM Studio недоступна: fetch failed
+[server] [AI] Запрос к LM Studio не выполнен: fetch failed

@@ -1,0 +1,9 @@
+[2798:1128/122517.102813:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2798:1128/122517.102942:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2798:1128/122517.102959:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2798:1128/122517.102971:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2798:1128/122517.102984:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:39733/devtools/browser/6b2a8760-3b96-40c0-8748-3c6b184d00b1
+[2798:1128/122517.144145:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2825:1128/122517.969489:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization

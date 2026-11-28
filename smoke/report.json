@@ -1,0 +1,53 @@
+[
+  {
+    "name": "A. режим «Сайт»: вход, оценки, расписание, AI, кабинет, онлайн-экзамен и возврат",
+    "ok": true,
+    "fatal": true,
+    "sec": 10,
+    "result": {
+      "login": true,
+      "grades": 200,
+      "schedule": 200,
+      "ai": {
+        "online": false,
+        "model": "google/gemma-4-e4b",
+        "ctx": 1565,
+        "reason": "unreachable"
+      },
+      "aiReply": true,
+      "notification": "granted",
+      "exam": true,
+      "examBack": true,
+      "notifOk": true
+    }
+  },
+  {
+    "name": "B. встроенный сервер: портал запускается внутри программы",
+    "ok": true,
+    "fatal": true,
+    "sec": 10,
+    "result": {
+      "login": true,
+      "grades": 200,
+      "schedule": 200,
+      "ai": {
+        "online": false,
+        "model": "google/gemma-4-e4b",
+        "ctx": 1565,
+        "reason": "unreachable"
+      },
+      "aiReply": true,
+      "notification": "granted",
+      "exam": true,
+      "examBack": true,
+      "notifOk": true
+    }
+  },
+  {
+    "name": "C. сайт недоступен: экран ошибки с кнопками",
+    "ok": true,
+    "fatal": true,
+    "sec": 1,
+    "result": true
+  }
+]

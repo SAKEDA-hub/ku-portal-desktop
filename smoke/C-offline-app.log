@@ -1,0 +1,17 @@
+[3032:1128/122534.170601:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3032:1128/122534.170658:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3032:1128/122534.170672:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3032:1128/122534.170682:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3032:1128/122534.170692:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:35883/devtools/browser/254092ff-2714-48cc-9d0c-bdd20b244674
+[3032:1128/122534.212834:ERROR:bus.cc(407)] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3058:1128/122534.275505:ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+[3075:1128/122534.344206:ERROR:shared_image_interface_proxy.cc(134)] Buffer handle is null. Not creating a mailbox from it.
+[3075:1128/122534.344311:ERROR:one_copy_raster_buffer_provider.cc(348)] Creation of StagingBuffer's SharedImage failed.
+[3075:1128/122534.345075:ERROR:shared_image_interface_proxy.cc(134)] Buffer handle is null. Not creating a mailbox from it.
+[3075:1128/122534.345158:ERROR:one_copy_raster_buffer_provider.cc(348)] Creation of StagingBuffer's SharedImage failed.
+[3075:1128/122534.348338:ERROR:shared_image_interface_proxy.cc(134)] Buffer handle is null. Not creating a mailbox from it.
+[3075:1128/122534.348422:ERROR:one_copy_raster_buffer_provider.cc(348)] Creation of StagingBuffer's SharedImage failed.
+(node:3032) electron: Failed to load URL: http://127.0.0.1:36349/ with error: ERR_CONNECTION_REFUSED
+(Use `ku-portal-desktop --trace-warnings ...` to show where the warning was created)
