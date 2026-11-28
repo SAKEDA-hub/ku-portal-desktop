@@ -1,0 +1,11 @@
+
+
+DevTools listening on ws://127.0.0.1:55350/devtools/browser/488db878-a882-4794-b5c5-b7134472306c
+[server] [AI] Загружена локальная база KU: 1565 фрагментов
+[server] [accounts] назначены логины пользователям
+[server] KU Portal: http://127.0.0.1:55349
+[server] [startup] {"commit":null,"data":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\ku-ud-4Jl0Er\\portal\\data\\demo","demo":true}
+[server] [proxy] {"peer":"127.0.0.1","trusted":false,"forwardedProto":null,"headers":["accept","accept-encoding","accept-language","connection","host","sec-fetch-mode","user-agent"]}
+[desktop] встроенный сервер: http://127.0.0.1:55349/
+[server] [AI] LM Studio недоступна: fetch failed
+[server] [AI] Запрос к LM Studio не выполнен: fetch failed
